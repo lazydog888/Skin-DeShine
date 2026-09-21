@@ -4,6 +4,14 @@ A ComfyUI custom node for reducing unwanted skin shine and specular highlights w
 
 `Skin-DeShine` 以臉部皮膚遮罩限制處理範圍，在 Lab 亮度低頻上壓制相對油亮，並對極亮高光核心做有限度的低頻／膚色重建。遮罩外像素不參與修正，原始高頻紋理會盡量保留。
 
+## Before / After example
+
+| Before | After |
+| --- | --- |
+| ![Before Skin DeShine](examples/before.jpg) | ![After Skin DeShine](examples/after.jpg) |
+
+> README 範例影像已縮放並壓縮，以便 GitHub 顯示；不影響節點處理流程或 canonical workflow。
+
 ## Nodes
 
 安裝後可在 `LIN/Retouch` 找到：
