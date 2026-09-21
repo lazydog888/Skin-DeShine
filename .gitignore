@@ -1,0 +1,14 @@
+# Python cache / test output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local environments / editor files
+.venv/
+venv/
+.vscode/
+.idea/
+
+# MediaPipe model assets are downloaded separately and must not be committed.
+models/*.task
+**/face_landmarker.task

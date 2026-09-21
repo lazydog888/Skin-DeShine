@@ -1,0 +1,4 @@
+# Default face-mask backend used by Skin DeShine Mask.
+# MediaPipe 1.x provides the Tasks API used by skin_mask.py and installs its runtime
+# dependencies (including OpenCV) through pip.
+mediapipe>=1.0.1,<2
