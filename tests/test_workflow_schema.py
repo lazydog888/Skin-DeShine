@@ -40,6 +40,7 @@ def main():
     assert "analysis_models" not in face_inputs
     assert [item["name"] for item in face_mask["outputs"]] == ["skin_mask", "preview"]
     assert face_mask["widgets_values_named"]["algorithm"] == "mediapipe"
+    assert face_mask["widgets_values_named"]["forehead_expand"] == 5.5
 
     for node_type in (
         "MaskPreview",
@@ -83,6 +84,8 @@ def main():
     assert "analysis_models" not in mask_inputs.get("required", {})
     assert "analysis_models" not in mask_inputs.get("optional", {})
     assert "manual_mask" in mask_inputs["optional"]
+    assert "forehead_expand" in mask_inputs["required"]
+    assert "hybrid" in mask_inputs["required"]["algorithm"][0]
 
     deoil_cls = mappings["LIN_DeOilSkin"]
     assert deoil_cls.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
