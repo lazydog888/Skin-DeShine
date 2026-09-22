@@ -184,7 +184,80 @@ def _mediapipe_model_path():
     raise FileNotFoundError("找不到 MediaPipe face_landmarker.task；請放在本節點 models/ 或 ComfyUI/models/mediapipe/")
 
 
-def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_blur):
+# MediaPipe face-mesh contour groups used by the v1.1 mask builder.
+_MEDIAPIPE_FACE_OVAL = (
+    10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288,
+    397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136,
+    172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109,
+)
+_MEDIAPIPE_LEFT_EYE = (33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246)
+_MEDIAPIPE_RIGHT_EYE = (263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466)
+_MEDIAPIPE_LEFT_BROW = (70, 63, 105, 66, 107, 55, 65, 52, 53, 46)
+_MEDIAPIPE_RIGHT_BROW = (300, 293, 334, 296, 336, 285, 295, 282, 283, 276)
+_MEDIAPIPE_MOUTH = (61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95)
+
+
+def _dilate_mask(mask, radius):
+    radius = max(0, int(radius))
+    if radius == 0:
+        return mask
+    size = radius * 2 + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+    return cv2.dilate(mask, kernel)
+
+
+def _mediapipe_face_mask(points, height, width, forehead_expand):
+    """Build a face-oval mask with adaptive upper-forehead extension."""
+    oval = points[list(_MEDIAPIPE_FACE_OVAL)].astype(np.float32).copy()
+    top_y = float(oval[:, 1].min())
+    bottom_y = float(oval[:, 1].max())
+    face_height = max(1.0, bottom_y - top_y)
+
+    # Face Landmarker follows the visible facial oval and often leaves too little
+    # upper forehead. Extend only the upper arc instead of expanding all edges.
+    upper_limit = top_y + face_height * 0.32
+    expand_px = face_height * max(0.0, float(forehead_expand)) / 100.0
+    denominator = max(1.0, upper_limit - top_y)
+    for point in oval:
+        if point[1] <= upper_limit:
+            weight = 1.0 - (float(point[1]) - top_y) / denominator
+            point[1] -= expand_px * (0.40 + 0.60 * weight)
+
+    oval[:, 0] = np.clip(oval[:, 0], 0, max(0, width - 1))
+    oval[:, 1] = np.clip(oval[:, 1], 0, max(0, height - 1))
+    return _polygon_mask(oval, height, width)
+
+
+def _mediapipe_skin_from_points(
+    points,
+    height,
+    width,
+    feature_margin,
+    boundary_shrink,
+    edge_blur,
+    forehead_expand,
+):
+    """Create a MediaPipe skin-region mask from landmark coordinates."""
+    face = _mediapipe_face_mask(points, height, width, forehead_expand)
+    protected = np.zeros((height, width), dtype=np.uint8)
+
+    # Eyes and mouth use the full margin. Brows use a smaller margin so they
+    # remain protected without unnecessarily removing the lower forehead.
+    full_margin = max(0, int(feature_margin))
+    brow_margin = max(0, int(round(full_margin * 0.45)))
+
+    for indices in (_MEDIAPIPE_LEFT_EYE, _MEDIAPIPE_RIGHT_EYE, _MEDIAPIPE_MOUTH):
+        feature = _polygon_mask(points[list(indices)], height, width)
+        protected = np.maximum(protected, _dilate_mask(feature, full_margin))
+
+    for indices in (_MEDIAPIPE_LEFT_BROW, _MEDIAPIPE_RIGHT_BROW):
+        feature = _polygon_mask(points[list(indices)], height, width)
+        protected = np.maximum(protected, _dilate_mask(feature, brow_margin))
+
+    return _finish_skin_mask(face, protected, 0, boundary_shrink, edge_blur)
+
+
+def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_blur, forehead_expand):
     import mediapipe as mp
 
     height, width = image.shape[:2]
@@ -196,18 +269,29 @@ def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_
         np.array([(point.x * width, point.y * height) for point in face], dtype=np.float32)
         for face in result.face_landmarks
     ]
-    points = max(faces, key=lambda value: (value[:, 0].max() - value[:, 0].min()) * (value[:, 1].max() - value[:, 1].min()))
-    face = _polygon_mask(points, height, width)
-    protected = np.zeros((height, width), dtype=np.uint8)
-    for indices in (
-        (33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246),
-        (263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466),
-        (70, 63, 105, 66, 107, 55, 65, 52, 53, 46),
-        (300, 293, 334, 296, 336, 285, 295, 282, 283, 276),
-        (61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95),
-    ):
-        protected = np.maximum(protected, _polygon_mask(points[list(indices)], height, width))
-    return _finish_skin_mask(face, protected, feature_margin, boundary_shrink, edge_blur)
+    points = max(
+        faces,
+        key=lambda value: (value[:, 0].max() - value[:, 0].min()) * (value[:, 1].max() - value[:, 1].min()),
+    )
+    return _mediapipe_skin_from_points(
+        points,
+        height,
+        width,
+        feature_margin,
+        boundary_shrink,
+        edge_blur,
+        forehead_expand,
+    )
+
+
+def _blend_hybrid_masks(mediapipe_mask, insightface_mask, single_model_weight=0.55):
+    """Favor model agreement while retaining partial coverage from either backend."""
+    mp_mask = np.clip(mediapipe_mask.astype(np.float32), 0.0, 1.0)
+    insight_mask = np.clip(insightface_mask.astype(np.float32), 0.0, 1.0)
+    agreement = np.minimum(mp_mask, insight_mask)
+    union = np.maximum(mp_mask, insight_mask)
+    weight = float(np.clip(single_model_weight, 0.0, 1.0))
+    return np.clip(agreement + (union - agreement) * weight, 0.0, 1.0)
 
 
 class LIN_FaceSkinMask:
@@ -215,21 +299,22 @@ class LIN_FaceSkinMask:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "要分析的人像原圖；節點會以畫面中最大的人臉為主要目標。"}),
-                "algorithm": (["mediapipe", "insightface"], {"default": "mediapipe", "tooltip": "選擇臉部定位算法。MediaPipe 不需要外接模型；InsightFace 會由節點內部載入。"}),
-                "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "五官保護區向外擴張的像素數；數值越大，眼睛、眉毛和嘴唇周圍越不容易被納入皮膚。"}),
-                "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "臉部外框向內縮的像素數，用來減少頭髮、耳朵和背景被選入。"}),
-                "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "遮罩邊緣羽化半徑；數值越大，遮罩邊界越柔和。"}),
-                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "手動 MASK 的合併方式：add 加入、subtract 排除、intersect 取交集、replace 完全取代自動遮罩。"}),
-                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對合併後遮罩向外擴張的像素數；0 代表不調整。"}),
-                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對合併後遮罩向內收縮的像素數；0 代表不調整。"}),
-                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "對最終遮罩再次羽化的半徑；0 代表保留原有邊緣。"}),
-                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "將遮罩二值化的門檻；0 代表不二值化，適合保留柔邊。"}),
-                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "手動 MASK 的影響強度；1 為完整套用，0 為不套用。"}),
-                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽疊圖中遮罩顏色的透明度；不會改變輸出的 MASK。"}),
+                "image": ("IMAGE", {"tooltip": "人像輸入 / Portrait input."}),
+                "algorithm": (["mediapipe", "insightface", "hybrid"], {"default": "mediapipe", "tooltip": "臉部遮罩後端 / Face-mask backend."}),
+                "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "五官保護邊距(px) / Feature margin."}),
+                "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "臉緣內縮(px) / Edge shrink."}),
+                "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "遮罩羽化 / Mask feather."}),
+                "forehead_expand": ("FLOAT", {"default": 5.5, "min": 0.0, "max": 14.0, "step": 0.5, "tooltip": "額頭上緣擴張(%臉高) / Forehead expand (%)."}),
+                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "手動遮罩合併 / Manual-mask mode."}),
+                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "遮罩外擴(px) / Expand."}),
+                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "遮罩內縮(px) / Shrink."}),
+                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "再次羽化 / Extra blur."}),
+                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "二值門檻；0=關 / Threshold; 0=off."}),
+                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "手動遮罩強度 / Manual strength."}),
+                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽透明度 / Preview opacity."}),
             },
             "optional": {
-                "manual_mask": ("MASK", {"tooltip": "可接外部手工繪製或修正過的 MASK，搭配 manual_mode 與 manual_strength 使用。"}),
+                "manual_mask": ("MASK", {"tooltip": "外部手動遮罩 / Optional manual mask."}),
             }
         }
 
@@ -245,6 +330,7 @@ class LIN_FaceSkinMask:
         feature_margin,
         boundary_shrink,
         edge_blur,
+        forehead_expand,
         manual_mode,
         manual_expand,
         manual_shrink,
@@ -255,7 +341,7 @@ class LIN_FaceSkinMask:
         manual_mask=None,
     ):
         masks = []
-        if algorithm == "mediapipe":
+        if algorithm in ("mediapipe", "hybrid"):
             import mediapipe as mp
 
             options = mp.tasks.vision.FaceLandmarkerOptions(
@@ -263,15 +349,41 @@ class LIN_FaceSkinMask:
                 running_mode=mp.tasks.vision.RunningMode.IMAGE,
                 num_faces=5,
             )
+            insight_model = _get_insightface_model() if algorithm == "hybrid" else None
             with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
                 for frame in image:
                     rgb = (frame[..., :3].clamp(0.0, 1.0).cpu().numpy() * 255.0 + 0.5).astype(np.uint8)
-                    masks.append(torch.from_numpy(_mediapipe_skin_mask(detector, rgb, feature_margin, boundary_shrink, edge_blur)))
+                    mediapipe_mask = _mediapipe_skin_mask(
+                        detector,
+                        rgb,
+                        feature_margin,
+                        boundary_shrink,
+                        edge_blur,
+                        forehead_expand,
+                    )
+                    if algorithm == "hybrid":
+                        insight_mask = _insightface_skin_mask(
+                            insight_model,
+                            rgb,
+                            feature_margin,
+                            boundary_shrink,
+                            edge_blur,
+                        )
+                        combined = _blend_hybrid_masks(mediapipe_mask, insight_mask)
+                        masks.append(torch.from_numpy(combined))
+                    else:
+                        masks.append(torch.from_numpy(mediapipe_mask))
         else:
             analysis_models = _get_insightface_model()
             for frame in image:
                 rgb = (frame[..., :3].clamp(0.0, 1.0).cpu().numpy() * 255.0 + 0.5).astype(np.uint8)
-                masks.append(torch.from_numpy(_insightface_skin_mask(analysis_models, rgb, feature_margin, boundary_shrink, edge_blur)))
+                masks.append(torch.from_numpy(_insightface_skin_mask(
+                    analysis_models,
+                    rgb,
+                    feature_margin,
+                    boundary_shrink,
+                    edge_blur,
+                )))
         skin_mask = adjust_mask(
             torch.stack(masks),
             manual_mask=manual_mask,
@@ -292,11 +404,11 @@ class LIN_SkinDeShineMaskLayer:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "destination": ("IMAGE", {"tooltip": "底層／背景圖，通常接原始人像。"}),
-                "source": ("IMAGE", {"tooltip": "要插入的圖層，通常接 MaskToImage 的輸出，或接另一張背景／參考圖。"}),
-                "mask": ("MASK", {"tooltip": "控制 source 圖層出現位置的遮罩，通常接 Skin DeShine Mask 的 skin_mask。"}),
-                "mask_opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "遮罩透明度；1 代表完整使用 MASK，0 代表不顯示 source。輸出的 mask 也會套用這個透明度。"}),
-                "background_opacity": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "source 圖層的顯示透明度；只影響合成預覽，不會削弱輸出的 mask。"}),
+                "destination": ("IMAGE", {"tooltip": "底圖 / Destination."}),
+                "source": ("IMAGE", {"tooltip": "來源圖 / Source."}),
+                "mask": ("MASK", {"tooltip": "合成遮罩 / Composite mask."}),
+                "mask_opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "遮罩強度 / Mask opacity."}),
+                "background_opacity": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽混合 / Preview blend."}),
             },
         }
 
@@ -335,12 +447,12 @@ class LIN_SkinDeShineMaskEditor:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "編輯視窗的背景圖；可接 Skin DeShine Mask Layer 的 image 輸出。"}),
-                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "ComfyUI 內建筆刷／橡皮擦遮罩編輯器；編輯後會輸出 MASK。"}),
-                "edit_mode": (["add", "replace"], {"default": "add", "tooltip": "add 保留自動 MASK 並加入 Painter 新畫區域；replace 完全使用 Painter MASK，適合重新畫完整遮罩。"}),
+                "image": ("IMAGE", {"tooltip": "編輯底圖 / Editor image."}),
+                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "筆刷遮罩 / Painter mask."}),
+                "edit_mode": (["add", "replace"], {"default": "add", "tooltip": "add=疊加；replace=取代 / Add or replace."}),
             },
             "optional": {
-                "auto_mask": ("MASK", {"tooltip": "尚未繪製手動 MASK 時使用的預設遮罩；通常接 Skin DeShine Mask 的 skin_mask。"}),
+                "auto_mask": ("MASK", {"tooltip": "自動遮罩 / Auto mask."}),
             },
         }
 
