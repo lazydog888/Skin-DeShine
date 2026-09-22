@@ -127,6 +127,17 @@ def _process_image(image, skin_mask, strength, core_repair, color_repair):
     return output.clamp(0.0, 1.0), core.clamp(0.0, 1.0)
 
 
+
+def _select_processing_mask(mask, processing_area):
+    """Resolve which pixels the de-shine algorithm is allowed to modify."""
+    mask = mask.clamp(0.0, 1.0)
+    if processing_area == "outside_mask":
+        return 1.0 - mask
+    if processing_area == "full_image":
+        return torch.ones_like(mask)
+    return mask
+
+
 class LIN_DeOilSkin:
     @classmethod
     def INPUT_TYPES(cls):
@@ -134,6 +145,7 @@ class LIN_DeOilSkin:
             "required": {
                 "image": ("IMAGE", {"tooltip": "輸入影像 / Input image."}),
                 "skin_mask": ("MASK", {"tooltip": "皮膚遮罩 / Skin mask."}),
+                "processing_area": (["inside_mask", "outside_mask", "full_image"], {"default": "inside_mask", "tooltip": "處理區域 / Processing area."}),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01, "tooltip": "去油光強度 / De-shine strength."}),
                 "core_repair": ("FLOAT", {"default": 0.78, "min": 0.0, "max": 0.95, "step": 0.01, "tooltip": "高光核心重建 / Highlight-core repair."}),
                 "color_repair": ("FLOAT", {"default": 0.42, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "膚色補回 / Color repair."}),
@@ -159,6 +171,7 @@ class LIN_DeOilSkin:
         self,
         image,
         skin_mask,
+        processing_area,
         strength,
         core_repair,
         color_repair,
@@ -184,14 +197,16 @@ class LIN_DeOilSkin:
             size=image.shape[1:3],
         )
 
+        processing_mask = _select_processing_mask(skin_mask, processing_area)
+
         outputs = []
         masks = []
         for index, frame in enumerate(image):
-            current_mask = skin_mask[index % skin_mask.shape[0]].to(device=frame.device, dtype=torch.float32)
+            current_mask = processing_mask[index % processing_mask.shape[0]].to(device=frame.device, dtype=torch.float32)
             output, shine_mask = _process_image(frame.float(), current_mask, strength, core_repair, color_repair)
             outputs.append(output.to(dtype=image.dtype))
             masks.append(shine_mask)
-        return torch.stack(outputs), torch.stack(masks), overlay_mask(image, skin_mask, preview_opacity).clamp(0.0, 1.0)
+        return torch.stack(outputs), torch.stack(masks), overlay_mask(image, processing_mask, preview_opacity).clamp(0.0, 1.0)
 
 
 NODE_CLASS_MAPPINGS = {"LIN_DeOilSkin": LIN_DeOilSkin}
