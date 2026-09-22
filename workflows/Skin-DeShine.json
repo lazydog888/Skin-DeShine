@@ -13,7 +13,7 @@
       ],
       "size": [
         270,
-        314
+        338
       ],
       "flags": {},
       "order": 2,
@@ -62,6 +62,7 @@
         "Node name for S&R": "LIN_DeOilSkin"
       },
       "widgets_values": [
+        "inside_mask",
         1,
         0.95,
         1,
@@ -74,6 +75,7 @@
         0.35
       ],
       "widgets_values_named": {
+        "processing_area": "inside_mask",
         "strength": 1,
         "core_repair": 0.95,
         "color_repair": 1,
