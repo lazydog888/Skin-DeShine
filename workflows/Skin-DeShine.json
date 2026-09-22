@@ -141,7 +141,7 @@
       ],
       "size": [
         277.28294072815606,
-        338
+        362
       ],
       "flags": {},
       "order": 1,
@@ -182,6 +182,7 @@
         8,
         2,
         2.5,
+        5.5,
         "add",
         0,
         0,
@@ -195,6 +196,7 @@
         "feature_margin": 8,
         "boundary_shrink": 2,
         "edge_blur": 2.5,
+        "forehead_expand": 5.5,
         "manual_mode": "add",
         "manual_expand": 0,
         "manual_shrink": 0,
