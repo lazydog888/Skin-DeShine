@@ -91,6 +91,8 @@ def main():
     deoil_cls = mappings["LIN_DeOilSkin"]
     deoil_inputs = deoil_cls.INPUT_TYPES()
     assert deoil_inputs["required"]["processing_area"][0] == ["inside_mask", "outside_mask", "full_image"]
+    assert "skin_mask" not in deoil_inputs["required"]
+    assert "skin_mask" in deoil_inputs["optional"]
     assert deoil_cls.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
     assert deoil_cls.RETURN_NAMES == ("image", "shine_mask", "mask_preview")
 
