@@ -144,7 +144,6 @@ class LIN_DeOilSkin:
         return {
             "required": {
                 "image": ("IMAGE", {"tooltip": "輸入影像 / Input image."}),
-                "skin_mask": ("MASK", {"tooltip": "皮膚遮罩 / Skin mask."}),
                 "processing_area": (["inside_mask", "outside_mask", "full_image"], {"default": "inside_mask", "tooltip": "處理區域 / Processing area."}),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01, "tooltip": "去油光強度 / De-shine strength."}),
                 "core_repair": ("FLOAT", {"default": 0.78, "min": 0.0, "max": 0.95, "step": 0.01, "tooltip": "高光核心重建 / Highlight-core repair."}),
@@ -158,6 +157,7 @@ class LIN_DeOilSkin:
                 "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽透明度 / Preview opacity."}),
             },
             "optional": {
+                "skin_mask": ("MASK", {"tooltip": "皮膚遮罩；full_image 可不接 / Skin mask; optional for full_image."}),
                 "manual_mask": ("MASK", {"tooltip": "外部手動遮罩 / Optional manual mask."}),
             },
         }
@@ -170,7 +170,6 @@ class LIN_DeOilSkin:
     def deoil(
         self,
         image,
-        skin_mask,
         processing_area,
         strength,
         core_repair,
@@ -182,8 +181,18 @@ class LIN_DeOilSkin:
         manual_threshold,
         manual_strength,
         preview_opacity,
+        skin_mask=None,
         manual_mask=None,
     ):
+        if skin_mask is None:
+            if processing_area != "full_image":
+                raise ValueError("skin_mask is required for inside_mask and outside_mask modes.")
+            skin_mask = torch.ones(
+                (image.shape[0], image.shape[1], image.shape[2]),
+                device=image.device,
+                dtype=torch.float32,
+            )
+
         skin_mask = adjust_mask(
             skin_mask,
             manual_mask=manual_mask,
