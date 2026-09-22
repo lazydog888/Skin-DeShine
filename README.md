@@ -172,9 +172,25 @@ Use it when comparing mask coverage or when one backend misses parts of the face
 - `manual_strength`: manual-mask influence.
 - `preview_opacity`: preview overlay only.
 
+## Processing-area modes
+
+v1.1 adds a `processing_area` control to **Skin DeShine**:
+
+- `inside_mask` — original behavior. Only pixels inside `skin_mask` can be modified.
+- `outside_mask` — invert the supplied mask and process only the area outside it.
+- `full_image` — ignore mask limits and allow processing across the whole image. In this mode, `skin_mask` is optional.
+
+中文：
+
+- `inside_mask`：原本模式，只處理遮罩內。
+- `outside_mask`：反轉遮罩，只處理遮罩外。
+- `full_image`：非遮罩模式，整張圖都可處理，而且可以不接 `skin_mask`。
+
+> **Caution:** the de-shine algorithm was designed around skin-region statistics. `outside_mask` and `full_image` can include hair, clothes, background, or other non-skin materials, so they are experimental and should be used mainly for missed skin areas or controlled testing.
+
 ## Skin DeShine algorithm
 
-The repair node accepts an `IMAGE` and a skin `MASK`.
+The repair node always accepts an `IMAGE`. A skin `MASK` is required for `inside_mask` and `outside_mask`, but optional for `full_image`.
 
 High-level pipeline:
 
@@ -187,7 +203,7 @@ High-level pipeline:
 7. Reconstruct those cores using surrounding valid skin.
 8. Optionally restore `a/b` skin color with `color_repair`.
 9. Restore most original high-frequency detail.
-10. Blend the result only inside the supplied mask.
+10. Blend the result only inside the resolved processing area (`inside_mask`, inverted `outside_mask`, or `full_image`).
 
 Main controls:
 
