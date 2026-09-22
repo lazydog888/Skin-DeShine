@@ -31,6 +31,7 @@ def main():
 
     assert [item["name"] for item in deoil["inputs"]] == ["image", "skin_mask", "manual_mask"]
     assert [item["name"] for item in deoil["outputs"]] == ["image", "shine_mask", "mask_preview"]
+    assert deoil["widgets_values_named"]["processing_area"] == "inside_mask"
     assert deoil["widgets_values_named"]["strength"] == 1
     assert deoil["widgets_values_named"]["core_repair"] == 0.95
     assert deoil["widgets_values_named"]["color_repair"] == 1
@@ -88,6 +89,8 @@ def main():
     assert "hybrid" in mask_inputs["required"]["algorithm"][0]
 
     deoil_cls = mappings["LIN_DeOilSkin"]
+    deoil_inputs = deoil_cls.INPUT_TYPES()
+    assert deoil_inputs["required"]["processing_area"][0] == ["inside_mask", "outside_mask", "full_image"]
     assert deoil_cls.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
     assert deoil_cls.RETURN_NAMES == ("image", "shine_mask", "mask_preview")
 
