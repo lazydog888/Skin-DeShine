@@ -2,9 +2,9 @@
 
 [English](README.md) | **繁體中文**
 
-A ComfyUI custom node for reducing unwanted skin shine and specular highlights while preserving image structure and high-frequency skin detail.
+一款用於選擇性修正皮膚過強高光的 ComfyUI 自訂節點，透過低頻亮度調整與局部高光重建，盡量保留原始皮膚紋理。
 
-`Skin-DeShine` 以臉部皮膚遮罩限制處理範圍，在 Lab 亮度低頻上壓制相對油亮，並對極亮高光核心做有限度的低頻／膚色重建。遮罩外像素不參與修正，原始高頻紋理會盡量保留。
+`Skin-DeShine` 使用皮膚遮罩限制處理範圍，分析 Lab 色彩空間中的低頻亮度，抑制相對過亮區域，並對極亮高光核心進行有限度的亮度與膚色重建。修正結果僅在指定遮罩內混合，盡量保留原始高頻紋理。節點不會判斷高光來自油脂、照明或其他因素，也無法真正還原已因過曝而遺失的細節。
 
 ## Before / After example
 
