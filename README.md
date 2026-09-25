@@ -2,9 +2,9 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-A ComfyUI custom node for reducing unwanted skin shine and specular highlights while preserving image structure and most high-frequency skin detail.
+A ComfyUI custom node for selectively reducing excessive skin highlights through low-frequency luminance adjustment and localized highlight reconstruction, while preserving most original skin texture.
 
-Skin-DeShine works on a user-supplied skin mask. It suppresses relative shine in the low-frequency luminance of Lab color space and applies limited reconstruction to extremely bright highlight cores. The final correction is blended only within the supplied mask. Its automatic mask generator is designed for faces; manual masks can be used to refine or extend the processing area.
+Skin-DeShine works on a user-supplied skin mask. It identifies relatively bright regions using low-frequency Lab luminance and applies limited reconstruction to extremely bright highlight cores. The correction is blended only within the supplied mask. Its automatic mask generator is designed for faces; manual masks can refine or extend the processing area. It does not determine whether highlights are caused by oil, lighting, or other factors, nor can it recover detail lost to clipping.
 
 ## Before / After
 
