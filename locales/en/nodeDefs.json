@@ -1,0 +1,201 @@
+{
+  "LIN_DeOilSkin": {
+    "display_name": "Skin DeShine",
+    "description": "Reduce excess shine in masked skin using low-frequency Lab luminance adjustment and limited highlight-core reconstruction.",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "Portrait image to de-shine. The skin mask is applied to this image."
+      },
+      "skin_mask": {
+        "name": "skin_mask",
+        "tooltip": "Skin area to process. Connect the skin_mask output of Skin DeShine Mask."
+      },
+      "strength": {
+        "name": "strength",
+        "tooltip": "Overall de-shining strength: 0 disables the effect, 1 is balanced, and higher values are stronger."
+      },
+      "core_repair": {
+        "name": "core_repair",
+        "tooltip": "Low-frequency reconstruction of bright, nearly white highlight cores; reduce to keep more original highlights."
+      },
+      "color_repair": {
+        "name": "color_repair",
+        "tooltip": "Restores skin color in highlight cores; reduce to avoid excessive color replacement."
+      },
+      "manual_mode": {
+        "name": "manual_mode",
+        "tooltip": "How to combine a manual mask: add, subtract, intersect, or replace."
+      },
+      "manual_expand": {
+        "name": "manual_expand",
+        "tooltip": "Expand the processing mask outward by this many pixels; 0 leaves it unchanged."
+      },
+      "manual_shrink": {
+        "name": "manual_shrink",
+        "tooltip": "Contract the processing mask inward by this many pixels; 0 leaves it unchanged."
+      },
+      "manual_blur": {
+        "name": "manual_blur",
+        "tooltip": "Additional mask-edge feathering radius; 0 keeps the current edge."
+      },
+      "manual_threshold": {
+        "name": "manual_threshold",
+        "tooltip": "Binarization threshold for hard-edged masks; 0 preserves soft edges."
+      },
+      "manual_strength": {
+        "name": "manual_strength",
+        "tooltip": "Strength of the manual-mask contribution: 1 fully applies it, 0 ignores it."
+      },
+      "preview_opacity": {
+        "name": "preview_opacity",
+        "tooltip": "Green mask overlay opacity in the preview only; does not change processing."
+      },
+      "manual_mask": {
+        "name": "manual_mask",
+        "tooltip": "Optional externally painted or corrected mask, used with manual_mode and manual_strength."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "shine_mask"
+      },
+      "2": {
+        "name": "mask_preview"
+      }
+    }
+  },
+  "LIN_FaceSkinMask": {
+    "display_name": "Skin DeShine Mask",
+    "description": "Build a face-skin mask with MediaPipe (default) or optional InsightFace, with manual refinements.",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "Portrait to analyze; the largest detected face is selected."
+      },
+      "algorithm": {
+        "name": "algorithm",
+        "tooltip": "Face landmark detector. MediaPipe needs its task model; InsightFace loads through the optional integration."
+      },
+      "feature_margin": {
+        "name": "feature_margin",
+        "tooltip": "Expand the protected eyes, eyebrows, and lips to exclude more nearby pixels from the skin mask."
+      },
+      "boundary_shrink": {
+        "name": "boundary_shrink",
+        "tooltip": "Contract the face boundary to reduce inclusion of hair, ears, and background."
+      },
+      "edge_blur": {
+        "name": "edge_blur",
+        "tooltip": "Feather the automatic mask boundary. Higher values create softer edges."
+      },
+      "manual_mode": {
+        "name": "manual_mode",
+        "tooltip": "How to combine a manual mask: add, subtract, intersect, or replace."
+      },
+      "manual_expand": {
+        "name": "manual_expand",
+        "tooltip": "Expand the merged mask outward by this many pixels; 0 leaves it unchanged."
+      },
+      "manual_shrink": {
+        "name": "manual_shrink",
+        "tooltip": "Contract the merged mask inward by this many pixels; 0 leaves it unchanged."
+      },
+      "manual_blur": {
+        "name": "manual_blur",
+        "tooltip": "Additional feathering radius for the final mask; 0 leaves the current edge."
+      },
+      "manual_threshold": {
+        "name": "manual_threshold",
+        "tooltip": "Binarization threshold for hard-edged masks; 0 preserves soft edges."
+      },
+      "manual_strength": {
+        "name": "manual_strength",
+        "tooltip": "Strength of the manual-mask contribution: 1 fully applies it, 0 ignores it."
+      },
+      "preview_opacity": {
+        "name": "preview_opacity",
+        "tooltip": "Green overlay opacity in the preview; does not change the returned MASK."
+      },
+      "manual_mask": {
+        "name": "manual_mask",
+        "tooltip": "Optional external hand-painted or corrected mask."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "skin_mask"
+      },
+      "1": {
+        "name": "preview"
+      }
+    }
+  },
+  "LIN_SkinDeShineMaskLayer": {
+    "display_name": "Skin DeShine Mask Composite",
+    "description": "Composite a source image over a destination for mask editing, and return the opacity-scaled mask.",
+    "inputs": {
+      "destination": {
+        "name": "destination",
+        "tooltip": "Base/background image, usually the original portrait."
+      },
+      "source": {
+        "name": "source",
+        "tooltip": "Layer to insert, such as MaskToImage output or another reference image."
+      },
+      "mask": {
+        "name": "mask",
+        "tooltip": "Where to show the source layer, usually Skin DeShine Mask's skin_mask."
+      },
+      "mask_opacity": {
+        "name": "mask_opacity",
+        "tooltip": "Mask strength: 1 applies the full mask, 0 hides the source. Also scales the output mask."
+      },
+      "background_opacity": {
+        "name": "background_opacity",
+        "tooltip": "Source-layer opacity in the composite preview only; does not weaken the output mask."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "mask"
+      }
+    }
+  },
+  "LIN_SkinDeShineMaskEditor": {
+    "display_name": "Skin DeShine Mask Layer",
+    "description": "Add to or replace an optional automatic mask using ComfyUI Painter.",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "Background shown in the Painter interface."
+      },
+      "mask": {
+        "name": "mask",
+        "tooltip": "Open ComfyUI Painter to paint or erase a mask; the edited mask is returned as MASK."
+      },
+      "edit_mode": {
+        "name": "edit_mode",
+        "tooltip": "add keeps the automatic mask and adds painted regions; replace uses only the Painter mask."
+      },
+      "auto_mask": {
+        "name": "auto_mask",
+        "tooltip": "Optional starting mask, usually the skin_mask from Skin DeShine Mask."
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "mask"
+      }
+    }
+  }
+}
