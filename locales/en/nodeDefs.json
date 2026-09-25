@@ -13,7 +13,7 @@
       },
       "strength": {
         "name": "strength",
-        "tooltip": "Overall de-shining strength: 0 disables the effect, 1 is balanced, and higher values are stronger."
+        "tooltip": "Overall shine-suppression strength: 0 disables luminance reduction (highlight-core repair remains separately controlled), 1 is balanced, and higher values suppress more shine."
       },
       "core_repair": {
         "name": "core_repair",
