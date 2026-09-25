@@ -13,7 +13,7 @@
       },
       "strength": {
         "name": "strength",
-        "tooltip": "整體去油光強度：0 不處理、1 為平衡效果；較高數值效果更強。"
+        "tooltip": "整體油光亮度抑制強度：0 不降低亮度（高光核心重建仍由 core_repair 控制）、1 為平衡值；數值越高抑制越強。"
       },
       "core_repair": {
         "name": "core_repair",
