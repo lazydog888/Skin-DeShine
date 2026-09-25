@@ -1,219 +1,221 @@
 # Skin-DeShine
 
-A ComfyUI custom node for reducing unwanted skin shine and specular highlights while preserving image structure and high-frequency skin detail.
+**English** | [繁體中文](README.zh-TW.md)
 
-`Skin-DeShine` 以臉部皮膚遮罩限制處理範圍，在 Lab 亮度低頻上壓制相對油亮，並對極亮高光核心做有限度的低頻／膚色重建。遮罩外像素不參與修正，原始高頻紋理會盡量保留。
+A ComfyUI custom node for reducing unwanted skin shine and specular highlights while preserving image structure and most high-frequency skin detail.
 
-## Before / After example
+Skin-DeShine works on a user-supplied skin mask. It suppresses relative shine in the low-frequency luminance of Lab color space and applies limited reconstruction to extremely bright highlight cores. The final correction is blended only within the supplied mask. Its automatic mask generator is designed for faces; manual masks can be used to refine or extend the processing area.
+
+## Before / After
 
 | Before | After |
 | --- | --- |
-| ![Before Skin DeShine](examples/before.jpg) | ![After Skin DeShine](examples/after.jpg) |
+| ![Before Skin-DeShine](examples/before.jpg) | ![After Skin-DeShine](examples/after.jpg) |
 
-> README 範例影像已縮放並壓縮，以便 GitHub 顯示；不影響節點處理流程或 canonical workflow。
+> The example images have been resized and compressed for GitHub. This does not change the node's processing pipeline or the canonical workflow.
 
 ## Nodes
 
-安裝後可在 `LIN/Retouch` 找到：
+After installation, find these four nodes under **LIN/Retouch**:
 
-- **Skin DeShine** (`LIN_DeOilSkin`)
-- **Skin DeShine Mask** (`LIN_FaceSkinMask`)
-- **Skin DeShine Mask Composite** (`LIN_SkinDeShineMaskLayer`)
-- **Skin DeShine Mask Layer** (`LIN_SkinDeShineMaskEditor`)
+- **Skin DeShine** (`LIN_DeOilSkin`) — reduce skin shine and repair bright highlight cores.
+- **Skin DeShine Mask** (`LIN_FaceSkinMask`) — generate a face-skin mask and optionally combine it with a hand-painted mask.
+- **Skin DeShine Mask Composite** (`LIN_SkinDeShineMaskLayer`) — preview a masked image composite and output its mask.
+- **Skin DeShine Mask Layer** (`LIN_SkinDeShineMaskEditor`) — edit or replace a mask using ComfyUI Painter.
 
-正式範例工作流位於 [`workflows/Skin-DeShine.json`](workflows/Skin-DeShine.json)。這是本專案的 canonical workflow。
+The maintained example is [`workflows/Skin-DeShine.json`](workflows/Skin-DeShine.json). It is the project's **canonical workflow**.
 
 ## Installation
 
-### 1. Clone into ComfyUI `custom_nodes`
+### 1. Clone into ComfyUI's custom_nodes directory
 
-```bash
+~~~bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/lazydog888/Skin-DeShine.git
-```
+~~~
 
-Repo root 本身就是 ComfyUI custom node package，不需要再額外建立 `lin_deoil_node` 子目錄。
+The repository root is already a ComfyUI custom-node package. Do **not** create an additional `lin_deoil_node` subdirectory.
 
 ### 2. Install Python dependencies
 
-使用**啟動 ComfyUI 的同一個 Python 環境**安裝：
+Use the **same Python environment that runs ComfyUI**:
 
-```bash
+~~~bash
 python -m pip install -r ComfyUI/custom_nodes/Skin-DeShine/requirements.txt
-```
+~~~
 
-ComfyUI Portable（Windows）常見做法：
+A common command for ComfyUI Portable on Windows is:
 
-```bat
+~~~bat
 python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\Skin-DeShine\requirements.txt
-```
+~~~
 
-主安裝依賴只有 MediaPipe。PyTorch、Pillow、NumPy 等基礎套件由既有 ComfyUI 環境提供；目前 MediaPipe 1.x 也會安裝其所需的 OpenCV runtime。
+MediaPipe is the principal package-specific dependency. The existing ComfyUI environment supplies common packages such as PyTorch, Pillow, and NumPy. MediaPipe 1.x also installs its required OpenCV runtime.
 
-### 3. Download MediaPipe Face Landmarker model
+### 3. Download the MediaPipe Face Landmarker model
 
-預設 `mediapipe` 遮罩算法需要 Google MediaPipe 的 `face_landmarker.task`。模型**不包含在本 repo，也不應提交到 Git**。
+The default `mediapipe` mask algorithm requires Google's `face_landmarker.task` model. **The model is not included in this repository and should not be committed to Git.**
 
-官方模型：
+Official model:
 
-```text
+~~~text
 https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task
-```
+~~~
 
-建議放在：
+Recommended location:
 
-```text
+~~~text
 ComfyUI/models/mediapipe/face_landmarker.task
-```
+~~~
 
-也支援節點私有模型路徑：
+Alternatively, place it in this node's private model directory:
 
-```text
+~~~text
 ComfyUI/custom_nodes/Skin-DeShine/models/face_landmarker.task
-```
+~~~
 
-`.gitignore` 已排除 `face_landmarker.task` / `models/*.task`，避免模型被誤提交。
+The `.gitignore` excludes `face_landmarker.task` and `models/*.task`.
 
 ### 4. Restart ComfyUI
 
-完全重新啟動 ComfyUI 後，確認 `LIN/Retouch` 分類中可以看到上述節點。
+Restart ComfyUI completely, then look for the four nodes under **LIN/Retouch**.
 
 ## Skin DeShine Mask
 
-`Skin DeShine Mask` 有兩種臉部定位算法：
+The **Skin DeShine Mask** node supports two facial landmark methods.
 
-### `mediapipe` — default
+### mediapipe — default
 
-使用 MediaPipe Face Landmarker 取得高密度臉部 landmarks。這是 canonical workflow 的預設路徑，不需要外接 `analysis_models`。
+MediaPipe Face Landmarker provides a dense set of face landmarks. This is the default in the canonical workflow; it does not require an external `analysis_models` input.
 
-節點會以畫面中最大的臉為主要目標，建立臉部皮膚區域，排除雙眼、眉毛、嘴唇／口腔，再進行臉部邊界內縮與柔邊，以降低頭髮、五官與背景被納入的機率。
+The node selects the largest detected face, builds a facial skin region, and excludes the eyes, eyebrows, and lips/mouth. It then contracts the face boundary and feathers mask edges to reduce accidental inclusion of hair, facial features, or background.
 
-### `insightface` — optional integration
+### insightface — optional integration
 
-InsightFace 模式同樣**不需要 workflow 外接 `analysis_models`**；Skin-DeShine 會在節點內部嘗試從 [`ComfyUI_FaceAnalysis`](https://github.com/cubiq/ComfyUI_FaceAnalysis) 載入 `comfyui_faceanalysis.faceanalysis.InsightFace`。
+The InsightFace mode also has **no external `analysis_models` workflow input**. Skin-DeShine attempts to load `comfyui_faceanalysis.faceanalysis.InsightFace` internally from [ComfyUI_FaceAnalysis](https://github.com/cubiq/ComfyUI_FaceAnalysis).
 
-因此這是 optional integration，不是 Skin-DeShine 主安裝依賴。若要使用此模式，必須另外安裝並正確設定 `ComfyUI_FaceAnalysis` 及其 InsightFace 環境／模型。
+This integration is **optional**, not a required dependency. Install and configure ComfyUI_FaceAnalysis and its InsightFace environment/models separately if you choose this method.
 
 ## Mask controls
 
-`Skin DeShine Mask` 與 `Skin DeShine` 都支援手動 MASK 修正：
+Both **Skin DeShine Mask** and **Skin DeShine** support manual mask refinement:
 
-- `manual_mask`：外部手工繪製或修正過的 MASK。
-- `manual_mode`：`add` / `subtract` / `intersect` / `replace`。
-- `manual_expand` / `manual_shrink`：以像素擴張或收縮最終處理範圍。
-- `manual_blur`：再次羽化遮罩邊緣。
-- `manual_threshold`：需要硬邊時才設定二值化門檻；`0` 保留柔邊。
-- `manual_strength`：控制手動 MASK 的影響量。
-- `preview_opacity`：只影響遮罩疊圖預覽，不改變去油光結果。
+| Parameter | Description |
+| --- | --- |
+| `manual_mask` | Optional external, hand-painted or corrected MASK. |
+| `manual_mode` | `add`: include painted areas; `subtract`: exclude them; `intersect`: keep the overlap; `replace`: use the manual mask instead of the automatic mask. |
+| `manual_expand` / `manual_shrink` | Expand or contract the resulting mask, in pixels. |
+| `manual_blur` | Feather the mask boundary again. |
+| `manual_threshold` | Binarize the mask when a hard edge is needed; `0` preserves soft edges. |
+| `manual_strength` | Amount contributed by the manual mask. |
+| `preview_opacity` | Opacity of the green mask overlay in the preview only; does not alter de-shining. |
 
-`Skin DeShine Mask` 輸出：
-
-- `skin_mask`：自動遮罩加手動修正後的正式 MASK。
-- `preview`：原圖加綠色皮膚遮罩疊圖。
+**Skin DeShine Mask** outputs `skin_mask` (the automatic mask plus manual refinements) and `preview` (the input image with a green skin-mask overlay).
 
 ## Skin DeShine algorithm
 
-`Skin DeShine` 輸入 `IMAGE` 與皮膚 `MASK`。遮罩應盡量排除眼睛、眉毛、嘴唇、頭髮、衣物與背景。
+**Skin DeShine** takes an `IMAGE` and a skin `MASK`. For facial retouching, exclude the eyes, eyebrows, lips, hair, clothing, and background from the mask as far as possible.
 
-主要處理流程：
+1. Convert RGB to Lab.
+2. Compute low-frequency luminance at a scale derived from the detected mask extent.
+3. Use relative luminance quantiles and local luminance excess inside the masked skin region to identify shine.
+4. Suppress the low-frequency luminance of ordinary shiny regions.
+5. Perform limited low-frequency reconstruction of very bright highlight cores using neighboring valid skin.
+6. Use `color_repair` to control recovery of the Lab a/b skin color in those cores.
+7. Preserve most original high-frequency detail, and blend the correction only inside the supplied mask.
 
-1. RGB 轉換至 Lab。
-2. 依臉部／遮罩尺度建立亮度低頻。
-3. 以皮膚區域的相對亮度 quantile 與局部亮度 excess 找出油亮區。
-4. 壓制一般油光的低頻亮度。
-5. 對最亮的高光核心，以周圍有效皮膚做有限度低頻 reconstruction。
-6. `color_repair` 控制高光核心的 a/b 膚色補回量。
-7. 保留大部分原始高頻細節，最後只在輸入 MASK 內混合修正結果。
+The three main controls are:
 
-主要參數：
+| Parameter | Effect |
+| --- | --- |
+| `strength` | Overall de-shining strength. `0` disables the luminance reduction. |
+| `core_repair` | Amount of low-frequency reconstruction applied to white highlight cores. Lower values retain more of the original highlights. |
+| `color_repair` | Amount of skin chroma restored in highlight cores. Lower values reduce chroma restoration. |
 
-- `strength`：整體去油光強度。
-- `core_repair`：白色高光核心的低頻重建量。
-- `color_repair`：高光核心的膚色補回量。
+The Python node's default values are:
 
-Python 節點本身的平衡預設值為：
-
-```text
+~~~text
 strength=1.0
 core_repair=0.78
 color_repair=0.42
-```
+~~~
 
-### Canonical workflow uses a stronger setting
+### The canonical workflow intentionally uses stronger values
 
-`workflows/Skin-DeShine.json` **刻意保存較強的修復設定**：
+The included [canonical workflow](workflows/Skin-DeShine.json) stores:
 
-```text
+~~~text
 strength=1
 core_repair=0.95
 color_repair=1
-```
+~~~
 
-這是 canonical workflow 的既有設定，不等同於 Python class 的 default，也不應在載入 workflow 時被默默改回 `0.78 / 0.42`。若效果過強，可由使用者自行降低 `core_repair` 或 `color_repair`。
+These values are **deliberately different from the Python class defaults**. Loading the workflow should not silently reset them to `0.78 / 0.42`. Lower `core_repair` or `color_repair` if the repair looks too strong.
 
-`Skin DeShine` 輸出：
+**Skin DeShine** outputs:
 
-- `image`：去油光結果。
-- `shine_mask`：本次偵測到的高光核心，可接 `MaskPreview` 檢查。
-- `mask_preview`：實際套用皮膚 MASK 的疊圖預覽。
+- `image` — the corrected image.
+- `shine_mask` — the highlight-core detection mask; connect to `MaskPreview` to inspect it.
+- `mask_preview` — the input image overlaid with the actual processing mask.
 
 ## Canonical workflow and optional iTools dependency
 
-Canonical workflow 使用 ComfyUI core 的：
+The canonical workflow uses these built-in ComfyUI nodes: `MaskPreview`, `MaskToImage`, `ImageCompositeMasked`, and `PreviewImage`.
 
-- `MaskPreview`
-- `MaskToImage`
-- `ImageCompositeMasked`
-- `PreviewImage`
+It also uses **`iToolsCompareImage`** for before/after comparison. This node comes from [ComfyUI-iTools](https://github.com/MohammadAboulEla/ComfyUI-iTools) and is **optional for the example workflow**, not a dependency of the Skin-DeShine Python package.
 
-並使用 **`iToolsCompareImage`** 做 before/after 比較。這顆比較節點來自 [`ComfyUI-iTools`](https://github.com/MohammadAboulEla/ComfyUI-iTools)，**只屬於範例 workflow 的 optional dependency，不是 Skin-DeShine Python package 的必要依賴**。
+Without ComfyUI-iTools, the Skin-DeShine nodes still install and work. However, the comparison node will be missing when loading the canonical workflow. Install ComfyUI-iTools or replace the comparison widget with your preferred image preview/comparison nodes.
 
-若沒有安裝 ComfyUI-iTools，Skin-DeShine custom nodes 本身仍可安裝與使用，但載入 canonical workflow 時比較節點會顯示為缺失。可安裝 ComfyUI-iTools，或自行改用其他圖片比較／Preview 節點。
+> ComfyUI-iTools currently lists Image Compare as not yet supported by its Node.2 Beta implementation. For the complete comparison UI in the included workflow, use the classic node system supported by iTools.
 
-> ComfyUI-iTools 目前將 Image Compare 列為 Node.2 Beta 尚未支援的節點；若要完整使用 canonical workflow 的比較 UI，請使用其支援的 classic node system。
+## Optional mask-editing helpers
 
-## Optional mask editing helpers
-
-除了 canonical workflow 使用的 ComfyUI core mask/composite 節點，本 package 也提供兩個 helper：
+In addition to ComfyUI's built-in mask/composite nodes used by the canonical workflow, this package includes two helpers.
 
 ### Skin DeShine Mask Composite
 
-輸入方式對應一般 masked composite：
+This helper provides a conventional masked-composite interface:
 
-- `destination`：底層／原始人像。
-- `source`：要插入的圖層，可使用 `MaskToImage` 的輸出。
-- `mask`：控制 source 顯示範圍。
-- `mask_opacity`：控制 MASK 強度，並同步影響輸出的 `mask`。
-- `background_opacity`：只控制 source 在合成預覽中的透明度。
+- `destination`: the base/original portrait.
+- `source`: the layer to composite, e.g. `MaskToImage` output.
+- `mask`: where the source layer appears.
+- `mask_opacity`: scales the mask and also affects the returned `mask`.
+- `background_opacity`: controls the source layer's visibility in the composite preview only.
 
-輸出：`image`, `mask`。
+Outputs: `image`, `mask`.
 
 ### Skin DeShine Mask Layer
 
-提供 ComfyUI Painter 介面：
+This helper provides ComfyUI's Painter interface:
 
-- `image`：編輯背景。
-- `auto_mask`：可接自動生成的 `skin_mask`。
-- `edit_mode=add`：保留自動 MASK，再加入 Painter 新畫區域。
-- `edit_mode=replace`：完全使用 Painter MASK。
+- `image`: the background shown while editing.
+- `auto_mask`: an optional starting mask, usually from Skin DeShine Mask.
+- `edit_mode=add`: retain the automatic mask and add painted areas.
+- `edit_mode=replace`: replace the automatic mask with the Painter mask.
 
-輸出的正式 `mask` 可直接接回 `Skin DeShine.skin_mask`。
+Connect the resulting `mask` directly to `Skin DeShine.skin_mask`.
+
+## Language
+
+[English](README.md) | [繁體中文](README.zh-TW.md) switches the GitHub documentation. GitHub does not provide a native in-place README language button; these are links between two documents.
+
+For ComfyUI versions that support custom-node localizations, select **Settings → Comfy → Locale → Language** to use the supplied `locales/en/nodeDefs.json` and `locales/zh-TW/nodeDefs.json` node descriptions and parameter tooltips. Changing the UI language does not change node IDs, parameter values, existing workflows, or the image-processing algorithm. Older frontends may fall back to the backend's Chinese tooltips.
 
 ## Tests
 
-不需要模型即可執行核心 self-check 與 workflow/mapping regression check：
+The repository includes model-free core self-checks and workflow/mapping regression checks:
 
-```bash
+~~~bash
 python tests/test_deoil.py
 python tests/test_skin_mask.py
 python tests/test_workflow_schema.py
-```
+~~~
 
-- `test_deoil.py`：檢查 shape、值域、遮罩外像素不變，以及高亮區確實被壓低。
-- `test_skin_mask.py`：以 fake InsightFace landmarks 檢查皮膚遮罩、五官排除與 mask helper I/O。
-- `test_workflow_schema.py`：檢查 canonical workflow 的節點／links／強修復參數，以及 custom node mappings；也會確保淘汰的 `analysis_models` socket 不會重新出現。
+- `test_deoil.py`: checks shapes, value ranges, unchanged pixels outside the mask, and reduced luminance in bright areas.
+- `test_skin_mask.py`: uses fake InsightFace landmarks to check skin masks, protected facial features, and mask-helper I/O.
+- `test_workflow_schema.py`: checks the canonical workflow's nodes, links, and stronger repair settings, as well as custom-node mappings and the absence of the retired `analysis_models` socket.
 
-這些測試不取代實際 MediaPipe 模型的整合測試；正式使用 `mediapipe` 時仍需要先下載 `face_landmarker.task`。
+These tests do **not** replace a live integration test with the MediaPipe model. Download `face_landmarker.task` before running the `mediapipe` path.
 
 ## License
 
