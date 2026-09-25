@@ -1,0 +1,201 @@
+{
+  "LIN_DeOilSkin": {
+    "display_name": "Skin DeShine",
+    "description": "以 Lab 低頻亮度修正減少遮罩內的皮膚油光，並有限度重建高光核心",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "需要去油光的人像原圖；皮膚遮罩套用於此影像。"
+      },
+      "skin_mask": {
+        "name": "skin_mask",
+        "tooltip": "處理的皮膚範圍；建議接 Skin DeShine Mask 的 skin_mask 輸出。"
+      },
+      "strength": {
+        "name": "strength",
+        "tooltip": "整體去油光強度：0 不處理、1 為平衡效果；較高數值效果更強。"
+      },
+      "core_repair": {
+        "name": "core_repair",
+        "tooltip": "白色高光核心的低頻重建量；調低可保留更多原始高光。"
+      },
+      "color_repair": {
+        "name": "color_repair",
+        "tooltip": "高光核心的膚色補回量；調低可避免補色過重。"
+      },
+      "manual_mode": {
+        "name": "manual_mode",
+        "tooltip": "手動遮罩合併方式：add 加入、subtract 排除、intersect 取交集、replace 取代。"
+      },
+      "manual_expand": {
+        "name": "manual_expand",
+        "tooltip": "處理遮罩向外擴張的像素數；0 為不調整。"
+      },
+      "manual_shrink": {
+        "name": "manual_shrink",
+        "tooltip": "處理遮罩向內收縮的像素數；0 為不調整。"
+      },
+      "manual_blur": {
+        "name": "manual_blur",
+        "tooltip": "遮罩邊緣的額外羽化半徑；0 保留原有邊緣。"
+      },
+      "manual_threshold": {
+        "name": "manual_threshold",
+        "tooltip": "硬邊遮罩的二值化門檻；0 保留柔邊。"
+      },
+      "manual_strength": {
+        "name": "manual_strength",
+        "tooltip": "手動遮罩的影響量：1 完整套用、0 不套用。"
+      },
+      "preview_opacity": {
+        "name": "preview_opacity",
+        "tooltip": "預覽中的綠色遮罩透明度；不影響去油光結果。"
+      },
+      "manual_mask": {
+        "name": "manual_mask",
+        "tooltip": "外部繪製或修正的遮罩，可搭配 manual_mode 與 manual_strength 使用。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "shine_mask"
+      },
+      "2": {
+        "name": "mask_preview"
+      }
+    }
+  },
+  "LIN_FaceSkinMask": {
+    "display_name": "Skin DeShine Mask",
+    "description": "使用預設 MediaPipe 或選用 InsightFace 建立臉部皮膚遮罩，支援手動修正。",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "要分析的人像原圖；以畫面中最大的人臉為主要目標。"
+      },
+      "algorithm": {
+        "name": "algorithm",
+        "tooltip": "臉部定位演算法。MediaPipe 需 task 模型；InsightFace 透過選用整合載入。"
+      },
+      "feature_margin": {
+        "name": "feature_margin",
+        "tooltip": "擴大眼睛、眉毛與嘴唇周圍的保護範圍，減少五官被選入遮罩。"
+      },
+      "boundary_shrink": {
+        "name": "boundary_shrink",
+        "tooltip": "內縮臉部外框，降低頭髮、耳朵與背景被選入的機率。"
+      },
+      "edge_blur": {
+        "name": "edge_blur",
+        "tooltip": "自動遮罩的邊緣羽化半徑；越高邊緣越柔和。"
+      },
+      "manual_mode": {
+        "name": "manual_mode",
+        "tooltip": "手動遮罩合併方式：add 加入、subtract 排除、intersect 取交集、replace 取代。"
+      },
+      "manual_expand": {
+        "name": "manual_expand",
+        "tooltip": "合併後遮罩向外擴張的像素數；0 為不調整。"
+      },
+      "manual_shrink": {
+        "name": "manual_shrink",
+        "tooltip": "合併後遮罩向內收縮的像素數；0 為不調整。"
+      },
+      "manual_blur": {
+        "name": "manual_blur",
+        "tooltip": "最終遮罩的額外羽化半徑；0 保留原有邊緣。"
+      },
+      "manual_threshold": {
+        "name": "manual_threshold",
+        "tooltip": "硬邊遮罩的二值化門檻；0 保留柔邊。"
+      },
+      "manual_strength": {
+        "name": "manual_strength",
+        "tooltip": "手動遮罩的影響量：1 完整套用、0 不套用。"
+      },
+      "preview_opacity": {
+        "name": "preview_opacity",
+        "tooltip": "預覽中的綠色遮罩透明度；不影響輸出的 MASK。"
+      },
+      "manual_mask": {
+        "name": "manual_mask",
+        "tooltip": "外部手工繪製或修正的遮罩。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "skin_mask"
+      },
+      "1": {
+        "name": "preview"
+      }
+    }
+  },
+  "LIN_SkinDeShineMaskLayer": {
+    "display_name": "Skin DeShine Mask Composite",
+    "description": "將來源影像疊合至底圖，以便編輯遮罩，並輸出依透明度縮放的遮罩。",
+    "inputs": {
+      "destination": {
+        "name": "destination",
+        "tooltip": "底層／背景圖，通常是原始人像。"
+      },
+      "source": {
+        "name": "source",
+        "tooltip": "要插入的圖層，例如 MaskToImage 的輸出或另一張參考圖。"
+      },
+      "mask": {
+        "name": "mask",
+        "tooltip": "控制來源圖層出現位置的遮罩，通常接 skin_mask。"
+      },
+      "mask_opacity": {
+        "name": "mask_opacity",
+        "tooltip": "遮罩強度：1 完整套用、0 不顯示來源；亦會影響輸出的遮罩。"
+      },
+      "background_opacity": {
+        "name": "background_opacity",
+        "tooltip": "來源圖層在合成預覽中的透明度，不會削弱輸出的遮罩。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "mask"
+      }
+    }
+  },
+  "LIN_SkinDeShineMaskEditor": {
+    "display_name": "Skin DeShine Mask Layer",
+    "description": "使用 ComfyUI Painter 加入或取代選用的自動遮罩。",
+    "inputs": {
+      "image": {
+        "name": "image",
+        "tooltip": "Painter 編輯視窗中的背景圖。"
+      },
+      "mask": {
+        "name": "mask",
+        "tooltip": "使用 ComfyUI Painter 筆刷／橡皮擦編輯遮罩，編輯結果輸出為 MASK。"
+      },
+      "edit_mode": {
+        "name": "edit_mode",
+        "tooltip": "add 保留自動遮罩並加入手繪區域；replace 僅使用 Painter 遮罩。"
+      },
+      "auto_mask": {
+        "name": "auto_mask",
+        "tooltip": "選用的初始遮罩，通常接 Skin DeShine Mask 的 skin_mask。"
+      }
+    },
+    "outputs": {
+      "0": {
+        "name": "image"
+      },
+      "1": {
+        "name": "mask"
+      }
+    }
+  }
+}
