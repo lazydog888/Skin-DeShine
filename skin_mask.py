@@ -7,6 +7,62 @@ from pathlib import Path
 
 
 _INSIGHTFACE_MODEL = None
+_MEDIAPIPE_FEATURES = (
+    (33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246),
+    (263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466),
+    (70, 63, 105, 66, 107, 55, 65, 52, 53, 46),
+    (300, 293, 334, 296, 336, 285, 295, 282, 283, 276),
+    (61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95),
+)
+
+
+class _NativeInsightFaceAdapter:
+    """Use the installed InsightFace package when the optional ComfyUI wrapper is absent."""
+
+    def __init__(self):
+        from insightface.app import FaceAnalysis
+
+        try:
+            import folder_paths
+
+            root = Path(folder_paths.models_dir) / "insightface"
+        except ImportError:
+            root = Path.home() / ".insightface"
+        model_dir = root / "models" / "buffalo_l"
+        if not model_dir.is_dir():
+            raise RuntimeError(f"找不到 InsightFace buffalo_l 模型：{model_dir}")
+        self.app = FaceAnalysis(name="buffalo_l", root=str(root))
+        self.app.prepare(ctx_id=-1, det_size=(640, 640))
+
+    @staticmethod
+    def _ellipse(center, rx, ry):
+        center = np.asarray(center, dtype=np.float32)
+        angles = np.linspace(0.0, np.pi * 2.0, 24, endpoint=False)
+        return np.stack((center[0] + np.cos(angles) * rx, center[1] + np.sin(angles) * ry), axis=1)
+
+    def get_landmarks(self, image, extended_landmarks=True):
+        faces = self.app.get(cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
+        if not faces:
+            return None
+        face = max(faces, key=lambda item: float((item.bbox[2] - item.bbox[0]) * (item.bbox[3] - item.bbox[1])))
+        points = getattr(face, "landmark_2d_106", None)
+        if points is not None:
+            face_polygon = cv2.convexHull(np.asarray(points, dtype=np.float32)).reshape(-1, 2)
+        else:
+            x0, y0, x1, y1 = np.asarray(face.bbox, dtype=np.float32)
+            face_polygon = np.asarray(((x0, y0), (x1, y0), (x1, y1), (x0, y1)), dtype=np.float32)
+
+        keypoints = np.asarray(getattr(face, "kps", []), dtype=np.float32)
+        if keypoints.shape == (5, 2):
+            face_width = max(1.0, float(face.bbox[2] - face.bbox[0]))
+            left_eye = self._ellipse(keypoints[0], face_width * 0.075, face_width * 0.045)
+            right_eye = self._ellipse(keypoints[1], face_width * 0.075, face_width * 0.045)
+            nose = self._ellipse(keypoints[2], face_width * 0.045, face_width * 0.055)
+            mouth_center = (keypoints[3] + keypoints[4]) * 0.5
+            mouth = self._ellipse(mouth_center, face_width * 0.13, face_width * 0.065)
+        else:
+            left_eye = right_eye = nose = mouth = face_polygon
+        return [None, None, left_eye, None, None, None, nose, right_eye, mouth, face_polygon]
 
 
 def _preview_ui(image):
@@ -68,11 +124,9 @@ def _get_insightface_model():
     if _INSIGHTFACE_MODEL is None:
         try:
             from comfyui_faceanalysis.faceanalysis import InsightFace
-        except ImportError as error:
-            raise RuntimeError(
-                "找不到 comfyui_faceanalysis，無法使用 InsightFace 遮罩算法。"
-            ) from error
-        _INSIGHTFACE_MODEL = InsightFace("CPU")
+            _INSIGHTFACE_MODEL = InsightFace("CPU")
+        except ImportError:
+            _INSIGHTFACE_MODEL = _NativeInsightFaceAdapter()
     return _INSIGHTFACE_MODEL
 
 
@@ -177,20 +231,21 @@ def _mediapipe_model_path():
     candidates = (
         Path(__file__).parent / "models" / "face_landmarker.task",
         Path(__file__).resolve().parents[2] / "models" / "mediapipe" / "face_landmarker.task",
+        Path(r"D:\MediaPipe\face_landmarker.task"),
     )
     for path in candidates:
         if path.is_file():
             return path
-    raise FileNotFoundError("找不到 MediaPipe face_landmarker.task；請放在本節點 models/ 或 ComfyUI/models/mediapipe/")
+    raise FileNotFoundError("找不到 MediaPipe face_landmarker.task，請放在 ComfyUI/models/mediapipe 或 D:\\MediaPipe")
 
 
-def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_blur):
+def _mediapipe_components(detector, image):
     import mediapipe as mp
 
     height, width = image.shape[:2]
     result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=image))
     if not result.face_landmarks:
-        return np.zeros((height, width), dtype=np.float32)
+        return None, None
 
     faces = [
         np.array([(point.x * width, point.y * height) for point in face], dtype=np.float32)
@@ -199,15 +254,61 @@ def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_
     points = max(faces, key=lambda value: (value[:, 0].max() - value[:, 0].min()) * (value[:, 1].max() - value[:, 1].min()))
     face = _polygon_mask(points, height, width)
     protected = np.zeros((height, width), dtype=np.uint8)
-    for indices in (
-        (33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246),
-        (263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466),
-        (70, 63, 105, 66, 107, 55, 65, 52, 53, 46),
-        (300, 293, 334, 296, 336, 285, 295, 282, 283, 276),
-        (61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95),
-    ):
+    for indices in _MEDIAPIPE_FEATURES:
         protected = np.maximum(protected, _polygon_mask(points[list(indices)], height, width))
+    return face, protected
+
+
+def _mediapipe_skin_mask(detector, image, feature_margin, boundary_shrink, edge_blur):
+    height, width = image.shape[:2]
+    face, protected = _mediapipe_components(detector, image)
+    if face is None:
+        return np.zeros((height, width), dtype=np.float32)
     return _finish_skin_mask(face, protected, feature_margin, boundary_shrink, edge_blur)
+
+
+def _run_sam3(image_tensor, prompt, threshold):
+    """沒接 sam3_mask 時，直接呼叫已安裝的 comfyui-rmbg SAM3Segment。"""
+    import nodes
+
+    node_class = nodes.NODE_CLASS_MAPPINGS.get("SAM3Segment")
+    if node_class is None:
+        raise RuntimeError("找不到 SAM3Segment（comfyui-rmbg）；請安裝，或手動把 SAM3 MASK 接到 sam3_mask。")
+    _, masks, _ = node_class().segment(image_tensor, prompt, "Auto", confidence_threshold=threshold)
+    return masks
+
+
+def _forehead_region(face, forehead_extend):
+    """MediaPipe 臉框往上延伸，補回額頭上半部；只用來限制 SAM3 的範圍。"""
+    ys, xs = np.nonzero(face)
+    if ys.size == 0:
+        return face
+    shift = int((ys.max() - ys.min()) * forehead_extend)
+    region = face.copy()
+    if shift > 0:
+        region[:-shift] = np.maximum(region[:-shift], face[shift:])
+    size = max(3, int((xs.max() - xs.min()) * 0.04)) * 2 + 1
+    return cv2.dilate(region, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
+
+
+def _hybrid_skin_mask(detector, image, sam3_mask, feature_margin, boundary_shrink, edge_blur, forehead_extend=0.25):
+    height, width = image.shape[:2]
+    mp_face, protected = _mediapipe_components(detector, image)
+    if protected is None:
+        return np.zeros((height, width), dtype=np.float32)
+
+    # SAM3 負責真實的皮膚邊界（額頭到髮際線），MediaPipe 臉框限制範圍（不含脖子、耳朵），再和臉框取聯集補洞
+    sam3 = (np.clip(sam3_mask, 0.0, 1.0) * 255.0).astype(np.uint8)
+    face = np.maximum(np.minimum(sam3, _forehead_region(mp_face, forehead_extend)), mp_face).astype(np.float32)
+    skin = _finish_skin_mask(face, protected, feature_margin, boundary_shrink, edge_blur)
+    if feature_margin > 0:
+        size = feature_margin * 2 + 1
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size))
+        protected = cv2.dilate(protected, kernel)
+    protect_alpha = protected.astype(np.float32) / 255.0
+    if edge_blur > 0:
+        protect_alpha = cv2.GaussianBlur(protect_alpha, (0, 0), max(0.75, edge_blur * 0.5))
+    return np.clip(skin * (1.0 - protect_alpha), 0.0, 1.0)
 
 
 class LIN_FaceSkinMask:
@@ -216,7 +317,7 @@ class LIN_FaceSkinMask:
         return {
             "required": {
                 "image": ("IMAGE", {"tooltip": "要分析的人像原圖；節點會以畫面中最大的人臉為主要目標。"}),
-                "algorithm": (["mediapipe", "insightface"], {"default": "mediapipe", "tooltip": "選擇臉部定位算法。MediaPipe 不需要外接模型；InsightFace 會由節點內部載入。"}),
+                "algorithm": (["mediapipe", "insightface", "mediapipe_sam3"], {"default": "mediapipe", "tooltip": "選擇遮罩算法。mediapipe_sam3：SAM3 圈皮膚（額頭到髮際線），MediaPipe 限制在臉部並排除五官；沒接 sam3_mask 時會自動執行 SAM3。"}),
                 "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "五官保護區向外擴張的像素數；數值越大，眼睛、眉毛和嘴唇周圍越不容易被納入皮膚。"}),
                 "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "臉部外框向內縮的像素數，用來減少頭髮、耳朵和背景被選入。"}),
                 "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "遮罩邊緣羽化半徑；數值越大，遮罩邊界越柔和。"}),
@@ -230,6 +331,9 @@ class LIN_FaceSkinMask:
             },
             "optional": {
                 "manual_mask": ("MASK", {"tooltip": "可接外部手工繪製或修正過的 MASK，搭配 manual_mode 與 manual_strength 使用。"}),
+                "sam3_mask": ("MASK", {"tooltip": "僅供 mediapipe_sam3：可接自己的 SAM3 MASK；不接則用 sam3_prompt 自動執行。"}),
+                "sam3_prompt": ("STRING", {"default": "skin", "tooltip": "mediapipe_sam3 自動執行 SAM3 時的文字提示。"}),
+                "forehead_extend": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 0.6, "step": 0.01, "tooltip": "mediapipe_sam3：臉框往上延伸的比例（相對臉高），讓 SAM3 能圈到額頭上半部。"}),
             }
         }
 
@@ -253,10 +357,19 @@ class LIN_FaceSkinMask:
         manual_strength,
         preview_opacity,
         manual_mask=None,
+        sam3_mask=None,
+        sam3_prompt="skin",
+        forehead_extend=0.25,
     ):
         masks = []
-        if algorithm == "mediapipe":
+        if algorithm in ("mediapipe", "mediapipe_sam3"):
             import mediapipe as mp
+
+            sam3_masks = None
+            if algorithm == "mediapipe_sam3":
+                if sam3_mask is None:
+                    sam3_mask = _run_sam3(image, sam3_prompt, 0.4)
+                sam3_masks = _prepare_mask(sam3_mask, image.shape[0], image.shape[1:3], image.device)
 
             options = mp.tasks.vision.FaceLandmarkerOptions(
                 base_options=mp.tasks.BaseOptions(model_asset_path=str(_mediapipe_model_path())),
@@ -264,9 +377,14 @@ class LIN_FaceSkinMask:
                 num_faces=5,
             )
             with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
-                for frame in image:
+                for index, frame in enumerate(image):
                     rgb = (frame[..., :3].clamp(0.0, 1.0).cpu().numpy() * 255.0 + 0.5).astype(np.uint8)
-                    masks.append(torch.from_numpy(_mediapipe_skin_mask(detector, rgb, feature_margin, boundary_shrink, edge_blur)))
+                    if algorithm == "mediapipe_sam3":
+                        sam3_frame = sam3_masks[index].detach().float().cpu().numpy()
+                        mask = _hybrid_skin_mask(detector, rgb, sam3_frame, feature_margin, boundary_shrink, edge_blur, forehead_extend)
+                    else:
+                        mask = _mediapipe_skin_mask(detector, rgb, feature_margin, boundary_shrink, edge_blur)
+                    masks.append(torch.from_numpy(mask))
         else:
             analysis_models = _get_insightface_model()
             for frame in image:
@@ -284,7 +402,9 @@ class LIN_FaceSkinMask:
             batch_size=image.shape[0],
             size=image.shape[1:3],
         )
-        return skin_mask, overlay_mask(image, skin_mask, preview_opacity).clamp(0.0, 1.0)
+        preview = overlay_mask(image, skin_mask, preview_opacity).clamp(0.0, 1.0)
+        # ui 預覽讓下游的 Mask Layer 畫布能直接拿「原圖＋自動遮罩」當底圖
+        return {"ui": _preview_ui(preview), "result": (skin_mask, preview)}
 
 
 class LIN_SkinDeShineMaskLayer:
@@ -335,12 +455,12 @@ class LIN_SkinDeShineMaskEditor:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "編輯視窗的背景圖；可接 Skin DeShine Mask Layer 的 image 輸出。"}),
-                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "ComfyUI 內建筆刷／橡皮擦遮罩編輯器；編輯後會輸出 MASK。"}),
-                "edit_mode": (["add", "replace"], {"default": "add", "tooltip": "add 保留自動 MASK 並加入 Painter 新畫區域；replace 完全使用 Painter MASK，適合重新畫完整遮罩。"}),
+                "image": ("IMAGE", {"tooltip": "畫布底圖。paint_on_image：接原圖（Load Image）。edit_auto_mask：接 Skin DeShine Mask 的 preview（原圖＋綠色自動遮罩），先跑一次才會顯示。"}),
+                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "在底圖上直接畫。edit_auto_mask 模式：任何顏色＝加入，紅色筆刷＝擦掉自動遮罩。"}),
+                "edit_mode": (["paint_on_image", "edit_auto_mask"], {"default": "edit_auto_mask", "tooltip": "paint_on_image：只用你畫的範圍當遮罩。edit_auto_mask：以自動遮罩為基礎，一般顏色加、紅色減。"}),
             },
             "optional": {
-                "auto_mask": ("MASK", {"tooltip": "尚未繪製手動 MASK 時使用的預設遮罩；通常接 Skin DeShine Mask 的 skin_mask。"}),
+                "auto_mask": ("MASK", {"tooltip": "edit_auto_mask 用：接 Skin DeShine Mask 的 skin_mask。"}),
             },
         }
 
@@ -349,7 +469,7 @@ class LIN_SkinDeShineMaskEditor:
     FUNCTION = "edit"
     CATEGORY = "LIN/Retouch"
 
-    def edit(self, image, mask, edit_mode="add", auto_mask=None):
+    def edit(self, image, mask, edit_mode="edit_auto_mask", auto_mask=None):
         import os
 
         if image.ndim != 4:
@@ -357,6 +477,7 @@ class LIN_SkinDeShineMaskEditor:
         base_image = image[:1].float()
         height, width = base_image.shape[1:3]
 
+        strokes = np.zeros((height, width, 4), dtype=np.float32)
         if mask and mask.strip():
             import folder_paths
             import node_helpers
@@ -368,21 +489,24 @@ class LIN_SkinDeShineMaskEditor:
             painter_img = node_helpers.pillow(Image.open, mask_path).convert("RGBA")
             if painter_img.size != (width, height):
                 painter_img = painter_img.resize((width, height), Image.LANCZOS)
+            strokes = np.asarray(painter_img).astype(np.float32) / 255.0
 
-            painter_np = np.asarray(painter_img).astype(np.float32) / 255.0
-            painter_rgb = torch.from_numpy(painter_np[:, :, :3]).unsqueeze(0)
-            painter_mask = torch.from_numpy(painter_np[:, :, 3]).unsqueeze(0)
-            if auto_mask is not None and edit_mode == "add":
-                automatic = _prepare_mask(auto_mask, 1, (height, width), base_image.device)
-                output_mask = torch.maximum(automatic, painter_mask.to(base_image.device))
-            else:
-                output_mask = painter_mask.to(base_image.device)
-            output_image = overlay_mask(base_image, output_mask, 0.35)
-        elif auto_mask is not None:
-            output_mask = _prepare_mask(auto_mask, 1, (height, width), base_image.device)
-            output_image = base_image
-        else:
-            output_mask = torch.zeros((1, height, width), dtype=torch.float32, device=base_image.device)
-            output_image = base_image
-
+        output_mask = torch.from_numpy(combine_strokes(strokes, auto_mask_np(auto_mask, height, width), edit_mode))[None]
+        output_image = overlay_mask(base_image, output_mask, 0.35)
         return output_image.clamp(0.0, 1.0).to(dtype=image.dtype), output_mask.clamp(0.0, 1.0)
+
+
+def auto_mask_np(auto_mask, height, width):
+    if auto_mask is None:
+        return np.zeros((height, width), dtype=np.float32)
+    return _prepare_mask(auto_mask, 1, (height, width), torch.device("cpu"))[0].numpy()
+
+
+def combine_strokes(strokes, auto, edit_mode):
+    """strokes: Painter 的 RGBA（0–1）。紅色筆刷在 edit_auto_mask 模式下代表擦除。"""
+    rgb, alpha = strokes[..., :3], strokes[..., 3]
+    if edit_mode == "paint_on_image":
+        return alpha.astype(np.float32)
+    red = (rgb[..., 0] > 0.6) & (rgb[..., 1] < 0.35) & (rgb[..., 2] < 0.35)
+    result = np.maximum(auto, np.where(red, 0.0, alpha))
+    return (result * (1.0 - np.where(red, alpha, 0.0))).astype(np.float32)

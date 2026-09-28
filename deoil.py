@@ -144,6 +144,7 @@ class LIN_DeOilSkin:
                 "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "將處理遮罩二值化的門檻；0 代表不二值化，適合保留柔邊。"}),
                 "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "手動 MASK 的影響強度；1 為完整套用，0 為不套用。"}),
                 "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽疊圖中遮罩顏色的透明度；不會改變去油光結果。"}),
+                "version": (["v2", "v1"], {"default": "v2", "tooltip": "v2：補回膚色不發灰、邊緣羽化、壓毛孔反光。v1：舊算法，留作對照。"}),
             },
             "optional": {
                 "manual_mask": ("MASK", {"tooltip": "可接外部手工繪製或修正過的 MASK，搭配 manual_mode 與 manual_strength 使用。"}),
@@ -169,8 +170,13 @@ class LIN_DeOilSkin:
         manual_threshold,
         manual_strength,
         preview_opacity,
+        version="v2",
         manual_mask=None,
     ):
+        try:
+            from .deoil_v2 import process_v2
+        except ImportError:
+            from deoil_v2 import process_v2
         skin_mask = adjust_mask(
             skin_mask,
             manual_mask=manual_mask,
@@ -188,7 +194,10 @@ class LIN_DeOilSkin:
         masks = []
         for index, frame in enumerate(image):
             current_mask = skin_mask[index % skin_mask.shape[0]].to(device=frame.device, dtype=torch.float32)
-            output, shine_mask = _process_image(frame.float(), current_mask, strength, core_repair, color_repair)
+            if version == "v1":
+                output, shine_mask = _process_image(frame.float(), current_mask, strength, core_repair, color_repair)
+            else:
+                output, shine_mask, _ = process_v2(frame.float(), current_mask, strength, core_repair, color_repair)
             outputs.append(output.to(dtype=image.dtype))
             masks.append(shine_mask)
         return torch.stack(outputs), torch.stack(masks), overlay_mask(image, skin_mask, preview_opacity).clamp(0.0, 1.0)

@@ -10,6 +10,13 @@
 | --- | --- |
 | ![處理前](examples/before.jpg) | ![處理後](examples/after.jpg) |
 
+## v2 更新（開發中）
+
+- **Skin DeShine 新增 `version`（預設 `v2`）**：壓暗高光時同步補回周圍膚色，不再發灰；修正範圍羽化，沒有硬邊；毛孔上的細碎反光會一起降低，暗面紋理保留。`v1` 保留作對照。
+- **遮罩新增 `mediapipe_sam3`**：沒接 `sam3_mask` 時自動執行 SAM3（comfyui-rmbg）。SAM3 圈出真實皮膚邊界（額頭到髮際線），MediaPipe 臉框往上延伸 `forehead_extend` 後限制範圍，排除脖子、耳朵與五官。
+- **Mask Layer 的 `edit_mode`**：`paint_on_image`（直接在原圖上畫）或 `edit_auto_mask`（接遮罩節點的 `preview`；任何顏色＝加入、**紅色**筆刷＝擦掉自動遮罩）。舊工作流裡的 `add`／`replace` 需要重新選擇。
+- 建議：`edge_blur` 設 8 左右，眉毛周圍比較不會出現交界線。
+
 ## 安裝
 
 在 ComfyUI 目錄下執行，並使用**啟動 ComfyUI 的同一個 Python 環境**：
