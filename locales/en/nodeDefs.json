@@ -1,7 +1,7 @@
 {
   "LIN_DeOilSkin": {
     "display_name": "Skin DeShine",
-    "description": "Reduce excess shine in masked skin using low-frequency Lab luminance adjustment and limited highlight-core reconstruction.",
+    "description": "Reduce excess shine in masked skin. v2 restores the surrounding skin colour while lowering highlights, feathers the correction, and trims bright pore-level glints.",
     "inputs": {
       "image": {
         "name": "image",
@@ -54,6 +54,10 @@
       "manual_mask": {
         "name": "manual_mask",
         "tooltip": "Optional externally painted or corrected mask, used with manual_mode and manual_strength."
+      },
+      "version": {
+        "name": "version",
+        "tooltip": "v2: restores skin colour (no grey patches), feathered edges, trims pore glints. v1: original algorithm, kept for comparison."
       }
     },
     "outputs": {
@@ -70,7 +74,7 @@
   },
   "LIN_FaceSkinMask": {
     "display_name": "Skin DeShine Mask",
-    "description": "Build a face-skin mask with MediaPipe (default) or optional InsightFace, with manual refinements.",
+    "description": "Build a face-skin mask with MediaPipe (default), optional InsightFace, or a MediaPipe + SAM3 hybrid, with manual refinements.",
     "inputs": {
       "image": {
         "name": "image",
@@ -78,7 +82,7 @@
       },
       "algorithm": {
         "name": "algorithm",
-        "tooltip": "Face landmark detector. MediaPipe needs its task model; InsightFace loads through the optional integration."
+        "tooltip": "Face skin detector. mediapipe_sam3: SAM3 traces the skin up to the hairline, MediaPipe keeps it on the face and removes eyes, brows and lips. Runs SAM3 automatically when sam3_mask is not connected."
       },
       "feature_margin": {
         "name": "feature_margin",
@@ -90,7 +94,7 @@
       },
       "edge_blur": {
         "name": "edge_blur",
-        "tooltip": "Feather the automatic mask boundary. Higher values create softer edges."
+        "tooltip": "Feather radius of the automatic mask edge; higher is softer. Around 8 avoids visible seams around the eyebrows."
       },
       "manual_mode": {
         "name": "manual_mode",
@@ -123,6 +127,18 @@
       "manual_mask": {
         "name": "manual_mask",
         "tooltip": "Optional external hand-painted or corrected mask."
+      },
+      "sam3_mask": {
+        "name": "sam3_mask",
+        "tooltip": "mediapipe_sam3 only: optional SAM3 mask of your own. Leave empty to run SAM3 automatically with sam3_prompt."
+      },
+      "sam3_prompt": {
+        "name": "sam3_prompt",
+        "tooltip": "mediapipe_sam3 only: text prompt used when SAM3 runs automatically."
+      },
+      "forehead_extend": {
+        "name": "forehead_extend",
+        "tooltip": "mediapipe_sam3 only: how far the MediaPipe face region extends upward (as a fraction of face height) so SAM3 can reach the upper forehead."
       }
     },
     "outputs": {
@@ -170,23 +186,23 @@
   },
   "LIN_SkinDeShineMaskEditor": {
     "display_name": "Skin DeShine Mask Layer",
-    "description": "Add to or replace an optional automatic mask using ComfyUI Painter.",
+    "description": "Paint a mask directly on the image, or edit the automatic mask with ComfyUI Painter.",
     "inputs": {
       "image": {
         "name": "image",
-        "tooltip": "Background shown in the Painter interface."
+        "tooltip": "Canvas background. paint_on_image: connect the original image. edit_auto_mask: connect the preview output of Skin DeShine Mask (run once to show it)."
       },
       "mask": {
         "name": "mask",
-        "tooltip": "Open ComfyUI Painter to paint or erase a mask; the edited mask is returned as MASK."
+        "tooltip": "Paint on the background. In edit_auto_mask, any colour adds and a red brush erases the automatic mask."
       },
       "edit_mode": {
         "name": "edit_mode",
-        "tooltip": "add keeps the automatic mask and adds painted regions; replace uses only the Painter mask."
+        "tooltip": "paint_on_image: use only the painted area. edit_auto_mask: start from the automatic mask; normal colours add, red removes."
       },
       "auto_mask": {
         "name": "auto_mask",
-        "tooltip": "Optional starting mask, usually the skin_mask from Skin DeShine Mask."
+        "tooltip": "For edit_auto_mask: connect the skin_mask output of Skin DeShine Mask."
       }
     },
     "outputs": {

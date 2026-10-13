@@ -1,7 +1,7 @@
 {
   "LIN_DeOilSkin": {
     "display_name": "Skin DeShine",
-    "description": "以 Lab 低頻亮度修正減少遮罩內的皮膚油光，並有限度重建高光核心",
+    "description": "減少遮罩內皮膚的多餘高光。v2 在壓低高光時補回周圍膚色、羽化修正範圍，並一併降低毛孔上的細碎反光。",
     "inputs": {
       "image": {
         "name": "image",
@@ -54,6 +54,10 @@
       "manual_mask": {
         "name": "manual_mask",
         "tooltip": "外部繪製或修正的遮罩，可搭配 manual_mode 與 manual_strength 使用。"
+      },
+      "version": {
+        "name": "version",
+        "tooltip": "v2：補回膚色不發灰、邊緣羽化、降低毛孔反光。v1：舊演算法，保留作對照。"
       }
     },
     "outputs": {
@@ -70,7 +74,7 @@
   },
   "LIN_FaceSkinMask": {
     "display_name": "Skin DeShine Mask",
-    "description": "使用預設 MediaPipe 或選用 InsightFace 建立臉部皮膚遮罩，支援手動修正。",
+    "description": "使用預設 MediaPipe、選用 InsightFace，或 MediaPipe + SAM3 混合模式建立臉部皮膚遮罩，支援手動修正。",
     "inputs": {
       "image": {
         "name": "image",
@@ -78,7 +82,7 @@
       },
       "algorithm": {
         "name": "algorithm",
-        "tooltip": "臉部定位演算法。MediaPipe 需 task 模型；InsightFace 透過選用整合載入。"
+        "tooltip": "臉部皮膚偵測方式。mediapipe_sam3：SAM3 圈出到髮際線的皮膚，MediaPipe 限制在臉部並排除眼、眉、唇；未接 sam3_mask 時會自動執行 SAM3。"
       },
       "feature_margin": {
         "name": "feature_margin",
@@ -90,7 +94,7 @@
       },
       "edge_blur": {
         "name": "edge_blur",
-        "tooltip": "自動遮罩的邊緣羽化半徑；越高邊緣越柔和。"
+        "tooltip": "自動遮罩的邊緣羽化半徑；越高邊緣越柔和。設 8 左右眉毛周圍較不會出現交界線。"
       },
       "manual_mode": {
         "name": "manual_mode",
@@ -123,6 +127,18 @@
       "manual_mask": {
         "name": "manual_mask",
         "tooltip": "外部手工繪製或修正的遮罩。"
+      },
+      "sam3_mask": {
+        "name": "sam3_mask",
+        "tooltip": "僅供 mediapipe_sam3：可接自己的 SAM3 遮罩；不接則以 sam3_prompt 自動執行。"
+      },
+      "sam3_prompt": {
+        "name": "sam3_prompt",
+        "tooltip": "僅供 mediapipe_sam3：自動執行 SAM3 時使用的文字提示。"
+      },
+      "forehead_extend": {
+        "name": "forehead_extend",
+        "tooltip": "僅供 mediapipe_sam3：MediaPipe 臉部範圍往上延伸的比例（相對臉高），讓 SAM3 能圈到額頭上半部。"
       }
     },
     "outputs": {
@@ -170,23 +186,23 @@
   },
   "LIN_SkinDeShineMaskEditor": {
     "display_name": "Skin DeShine Mask Layer",
-    "description": "使用 ComfyUI Painter 加入或取代選用的自動遮罩。",
+    "description": "直接在圖上畫遮罩，或用 ComfyUI Painter 修改自動遮罩。",
     "inputs": {
       "image": {
         "name": "image",
-        "tooltip": "Painter 編輯視窗中的背景圖。"
+        "tooltip": "畫布底圖。paint_on_image：接原圖。edit_auto_mask：接 Skin DeShine Mask 的 preview（先執行一次才會顯示）。"
       },
       "mask": {
         "name": "mask",
-        "tooltip": "使用 ComfyUI Painter 筆刷／橡皮擦編輯遮罩，編輯結果輸出為 MASK。"
+        "tooltip": "在底圖上繪製。edit_auto_mask 模式下，任何顏色＝加入，紅色筆刷＝擦掉自動遮罩。"
       },
       "edit_mode": {
         "name": "edit_mode",
-        "tooltip": "add 保留自動遮罩並加入手繪區域；replace 僅使用 Painter 遮罩。"
+        "tooltip": "paint_on_image：只使用你畫的範圍。edit_auto_mask：以自動遮罩為基礎，一般顏色加入、紅色移除。"
       },
       "auto_mask": {
         "name": "auto_mask",
-        "tooltip": "選用的初始遮罩，通常接 Skin DeShine Mask 的 skin_mask。"
+        "tooltip": "edit_auto_mask 用：接 Skin DeShine Mask 的 skin_mask。"
       }
     },
     "outputs": {
