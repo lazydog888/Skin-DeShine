@@ -94,7 +94,7 @@
       },
       "edge_blur": {
         "name": "edge_blur",
-        "tooltip": "自動遮罩的邊緣羽化半徑；越高邊緣越柔和。設 8 左右眉毛周圍較不會出現交界線。"
+        "tooltip": "自動遮罩的邊緣羽化半徑；越高邊緣越柔和。預設 8 可避免眉毛周圍出現交界線。"
       },
       "manual_mode": {
         "name": "manual_mode",

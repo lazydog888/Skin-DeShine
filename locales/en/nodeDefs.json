@@ -94,7 +94,7 @@
       },
       "edge_blur": {
         "name": "edge_blur",
-        "tooltip": "Feather radius of the automatic mask edge; higher is softer. Around 8 avoids visible seams around the eyebrows."
+        "tooltip": "Feather radius of the automatic mask edge; higher is softer. The default 8 avoids visible seams around the eyebrows."
       },
       "manual_mode": {
         "name": "manual_mode",

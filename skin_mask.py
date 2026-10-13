@@ -331,7 +331,7 @@ class LIN_FaceSkinMask:
                 "algorithm": (["mediapipe", "insightface", "mediapipe_sam3"], {"default": "mediapipe", "tooltip": "Face skin detector. mediapipe_sam3: SAM3 traces the skin up to the hairline, MediaPipe keeps it on the face and removes eyes, brows and lips. Runs SAM3 automatically when sam3_mask is not connected."}),
                 "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "Expand the protected eyes, eyebrows, and lips to exclude more nearby pixels from the skin mask."}),
                 "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "Contract the face boundary to reduce inclusion of hair, ears, and background."}),
-                "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "Feather radius of the automatic mask edge; higher is softer. Around 8 avoids visible seams around the eyebrows."}),
+                "edge_blur": ("FLOAT", {"default": 8.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "Feather radius of the automatic mask edge; higher is softer. The default 8 avoids visible seams around the eyebrows."}),
                 "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "How to combine a manual mask: add, subtract, intersect, or replace."}),
                 "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Expand the merged mask outward by this many pixels; 0 leaves it unchanged."}),
                 "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Contract the merged mask inward by this many pixels; 0 leaves it unchanged."}),

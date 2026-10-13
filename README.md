@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](README.zh-TW.md)
 
-A ComfyUI custom node for reducing excessive skin shine while preserving most original skin texture. It uses a skin mask and low-frequency Lab adjustments to soften highlights, with limited reconstruction of bright highlight cores.
+A ComfyUI custom node that reduces excessive highlights on skin while keeping the original texture. It works only inside a facial skin mask, lowers bright areas with low-frequency Lab adjustments, and puts the surrounding skin colour back so corrected areas do not turn grey.
 
 ## Before / After
 
@@ -10,12 +10,11 @@ A ComfyUI custom node for reducing excessive skin shine while preserving most or
 | --- | --- |
 | ![Before](examples/before.jpg) | ![After](examples/after.jpg) |
 
-## What's new in v2 (dev)
+## Features
 
-- **Skin DeShine `version` (default `v2`)**: restores the surrounding skin colour while lowering highlights (no grey patches), feathers the correction so there are no hard edges, and trims bright pore-level glints while keeping the darker texture. `v1` stays available for comparison.
-- **`mediapipe_sam3` mask mode**: runs SAM3 (comfyui-rmbg) automatically when `sam3_mask` is not connected. SAM3 traces the real skin edge up to the hairline; the MediaPipe face region, extended upward by `forehead_extend`, keeps it off the neck and ears and removes eyes, brows and lips.
-- **Mask Layer `edit_mode`**: `paint_on_image` (paint directly on the original image) or `edit_auto_mask` (connect the mask node's `preview`; any colour adds, a **red** brush erases the auto mask). Workflows saved with the old `add` / `replace` values need the mode re-selected.
-- Tip: `edge_blur` around 8 avoids visible seams around the eyebrows.
+- **Natural highlight reduction (v2)**: lowers shine on the forehead, nose and cheeks, restores the surrounding skin colour, feathers the correction so there are no hard edges, and softens bright pore-level glints while keeping the darker texture. The original algorithm is still available as `version = v1`.
+- **Automatic skin mask**: MediaPipe finds the face and protects the eyes, brows and lips. The `mediapipe_sam3` mode adds SAM3 so the mask follows the real skin edge up to the hairline instead of stopping mid-forehead.
+- **Manual mask editing**: paint directly on the image (`paint_on_image`), or start from the automatic mask and adjust it (`edit_auto_mask`): any colour adds, a **red** brush erases.
 
 ## Install
 
@@ -34,19 +33,28 @@ ComfyUI/models/mediapipe/face_landmarker.task
 
 Alternatively, place it in `custom_nodes/Skin-DeShine/models/`. The model is not included in this repository. Restart ComfyUI after installation.
 
+For the `mediapipe_sam3` mask mode, also install [ComfyUI-RMBG](https://github.com/1038lab/ComfyUI-RMBG), which provides SAM3.
+
 ## Get started
 
-Load [the example workflow](workflows/Skin-DeShine.json) or connect your own `IMAGE` and skin `MASK` to **Skin DeShine**. Use **Skin DeShine Mask** to generate a facial skin mask automatically.
+Load [the example workflow](workflows/Skin-DeShine.json). It runs:
 
-Four nodes are available under `LIN/Retouch`: **Skin DeShine**, **Skin DeShine Mask**, **Skin DeShine Mask Composite**, and **Skin DeShine Mask Layer**.
+**Load Image → Skin DeShine Mask → Skin DeShine Mask Layer → Skin DeShine**
+
+- **Skin DeShine Mask** builds the skin mask (`mediapipe_sam3` in the example).
+- **Skin DeShine Mask Layer** passes the mask through unchanged until you paint on it. Run the workflow once and its canvas shows the image with the mask in green; paint to add, use red to erase.
+- **Skin DeShine** reduces the highlights. Start with `strength` around 0.5 and raise it if more shine should go.
+
+You can also connect any `IMAGE` and skin `MASK` straight to **Skin DeShine**. All nodes are under `LIN/Retouch`.
 
 ## Notes
 
-- **MediaPipe** is the default mask method. **InsightFace** is optional and requires [ComfyUI_FaceAnalysis](https://github.com/cubiq/ComfyUI_FaceAnalysis); no external `analysis_models` input is needed.
-- The example workflow uses **iToolsCompareImage** from [ComfyUI-iTools](https://github.com/MohammadAboulEla/ComfyUI-iTools) for its comparison view. This is optional for using the Skin-DeShine nodes.
-- The workflow retains its stronger settings: `strength=1`, `core_repair=0.95`, `color_repair=1`. The node's Python defaults are `1 / 0.78 / 0.42`.
-- The tool reduces bright highlights; it cannot recover image detail already lost to clipping.
+- Mask methods: **MediaPipe** (default), **MediaPipe + SAM3**, or **InsightFace** (optional, requires [ComfyUI_FaceAnalysis](https://github.com/cubiq/ComfyUI_FaceAnalysis)).
+- The mask is required. It limits the correction to skin and also tells the node what counts as a highlight on this face; processing the whole frame darkens eyes, lips, hair and the background.
+- Higher `strength` flattens the lit side of side-lit faces. Values around 0.5 look most natural on soft studio light.
+- The example workflow uses **iToolsCompareImage** from [ComfyUI-iTools](https://github.com/MohammadAboulEla/ComfyUI-iTools) for its comparison view; it is optional.
+- The node lowers bright highlights; it cannot recover detail already lost to clipping.
 
-Node descriptions are also available in English and Traditional Chinese via the supplied `locales/` files. Self-checks are in [`tests/`](tests/).
+Node descriptions are available in English and Traditional Chinese via `locales/`. Self-checks are in [`tests/`](tests/).
 
 **License:** [GPL-3.0](LICENSE).
