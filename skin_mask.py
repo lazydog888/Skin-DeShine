@@ -30,7 +30,7 @@ class _NativeInsightFaceAdapter:
             root = Path.home() / ".insightface"
         model_dir = root / "models" / "buffalo_l"
         if not model_dir.is_dir():
-            raise RuntimeError(f"找不到 InsightFace buffalo_l 模型：{model_dir}")
+            raise RuntimeError(f"InsightFace buffalo_l model not found: {model_dir}")
         self.app = FaceAnalysis(name="buffalo_l", root=str(root))
         self.app.prepare(ctx_id=-1, det_size=(640, 640))
 
@@ -137,7 +137,7 @@ def _prepare_mask(mask, batch_size, size, device):
     elif mask.ndim == 4 and mask.shape[1] == 1:
         mask = mask[:, 0]
     if mask.ndim != 3:
-        raise ValueError("MASK 必須是 [H,W] 或 [B,H,W]")
+        raise ValueError("MASK must be [H,W] or [B,H,W]")
     if tuple(mask.shape[1:]) != tuple(size):
         mask = F.interpolate(mask[:, None], size=size, mode="bilinear", align_corners=False)[:, 0]
     if mask.shape[0] == 1 and batch_size > 1:
@@ -236,7 +236,7 @@ def _mediapipe_model_path():
     for path in candidates:
         if path.is_file():
             return path
-    raise FileNotFoundError("找不到 MediaPipe face_landmarker.task，請放在 ComfyUI/models/mediapipe 或 D:\\MediaPipe")
+    raise FileNotFoundError("MediaPipe face_landmarker.task not found; put it in ComfyUI/models/mediapipe")
 
 
 def _mediapipe_components(detector, image):
@@ -273,9 +273,20 @@ def _run_sam3(image_tensor, prompt, threshold):
 
     node_class = nodes.NODE_CLASS_MAPPINGS.get("SAM3Segment")
     if node_class is None:
-        raise RuntimeError("找不到 SAM3Segment（comfyui-rmbg）；請安裝，或手動把 SAM3 MASK 接到 sam3_mask。")
-    _, masks, _ = node_class().segment(image_tensor, prompt, "Auto", confidence_threshold=threshold)
-    return masks
+        raise RuntimeError("SAM3Segment (comfyui-rmbg) not found; install it, or connect your own SAM3 mask to sam3_mask.")
+    # 依對方節點自己宣告的預設值填參數；comfyui-rmbg 改過簽名（2026-09 新增 model_name），寫死位置參數會壞
+    kwargs = {}
+    spec = node_class.INPUT_TYPES()
+    for section in ("required", "optional"):
+        for key, value in spec.get(section, {}).items():
+            options = value[1] if len(value) > 1 and isinstance(value[1], dict) else {}
+            if "default" in options:
+                kwargs[key] = options["default"]
+            elif isinstance(value[0], (list, tuple)) and value[0]:
+                kwargs[key] = value[0][0]
+    kwargs.update(image=image_tensor, prompt=prompt, confidence_threshold=threshold)
+    function = getattr(node_class(), getattr(node_class, "FUNCTION", "segment"))
+    return function(**kwargs)[1]
 
 
 def _forehead_region(face, forehead_extend):
@@ -316,24 +327,24 @@ class LIN_FaceSkinMask:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "要分析的人像原圖；節點會以畫面中最大的人臉為主要目標。"}),
-                "algorithm": (["mediapipe", "insightface", "mediapipe_sam3"], {"default": "mediapipe", "tooltip": "選擇遮罩算法。mediapipe_sam3：SAM3 圈皮膚（額頭到髮際線），MediaPipe 限制在臉部並排除五官；沒接 sam3_mask 時會自動執行 SAM3。"}),
-                "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "五官保護區向外擴張的像素數；數值越大，眼睛、眉毛和嘴唇周圍越不容易被納入皮膚。"}),
-                "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "臉部外框向內縮的像素數，用來減少頭髮、耳朵和背景被選入。"}),
-                "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "遮罩邊緣羽化半徑；數值越大，遮罩邊界越柔和。"}),
-                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "手動 MASK 的合併方式：add 加入、subtract 排除、intersect 取交集、replace 完全取代自動遮罩。"}),
-                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對合併後遮罩向外擴張的像素數；0 代表不調整。"}),
-                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對合併後遮罩向內收縮的像素數；0 代表不調整。"}),
-                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "對最終遮罩再次羽化的半徑；0 代表保留原有邊緣。"}),
-                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "將遮罩二值化的門檻；0 代表不二值化，適合保留柔邊。"}),
-                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "手動 MASK 的影響強度；1 為完整套用，0 為不套用。"}),
-                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽疊圖中遮罩顏色的透明度；不會改變輸出的 MASK。"}),
+                "image": ("IMAGE", {"tooltip": "Portrait to analyze; the largest detected face is selected."}),
+                "algorithm": (["mediapipe", "insightface", "mediapipe_sam3"], {"default": "mediapipe", "tooltip": "Face skin detector. mediapipe_sam3: SAM3 traces the skin up to the hairline, MediaPipe keeps it on the face and removes eyes, brows and lips. Runs SAM3 automatically when sam3_mask is not connected."}),
+                "feature_margin": ("INT", {"default": 8, "min": 0, "max": 128, "step": 1, "tooltip": "Expand the protected eyes, eyebrows, and lips to exclude more nearby pixels from the skin mask."}),
+                "boundary_shrink": ("INT", {"default": 2, "min": 0, "max": 64, "step": 1, "tooltip": "Contract the face boundary to reduce inclusion of hair, ears, and background."}),
+                "edge_blur": ("FLOAT", {"default": 2.5, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "Feather radius of the automatic mask edge; higher is softer. Around 8 avoids visible seams around the eyebrows."}),
+                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "How to combine a manual mask: add, subtract, intersect, or replace."}),
+                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Expand the merged mask outward by this many pixels; 0 leaves it unchanged."}),
+                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Contract the merged mask inward by this many pixels; 0 leaves it unchanged."}),
+                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "Additional feathering radius for the final mask; 0 leaves the current edge."}),
+                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Binarization threshold for hard-edged masks; 0 preserves soft edges."}),
+                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Strength of the manual-mask contribution: 1 fully applies it, 0 ignores it."}),
+                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Green overlay opacity in the preview; does not change the returned MASK."}),
             },
             "optional": {
-                "manual_mask": ("MASK", {"tooltip": "可接外部手工繪製或修正過的 MASK，搭配 manual_mode 與 manual_strength 使用。"}),
-                "sam3_mask": ("MASK", {"tooltip": "僅供 mediapipe_sam3：可接自己的 SAM3 MASK；不接則用 sam3_prompt 自動執行。"}),
-                "sam3_prompt": ("STRING", {"default": "skin", "tooltip": "mediapipe_sam3 自動執行 SAM3 時的文字提示。"}),
-                "forehead_extend": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 0.6, "step": 0.01, "tooltip": "mediapipe_sam3：臉框往上延伸的比例（相對臉高），讓 SAM3 能圈到額頭上半部。"}),
+                "manual_mask": ("MASK", {"tooltip": "Optional external hand-painted or corrected mask."}),
+                "sam3_mask": ("MASK", {"tooltip": "mediapipe_sam3 only: optional SAM3 mask of your own. Leave empty to run SAM3 automatically with sam3_prompt."}),
+                "sam3_prompt": ("STRING", {"default": "skin", "tooltip": "mediapipe_sam3 only: text prompt used when SAM3 runs automatically."}),
+                "forehead_extend": ("FLOAT", {"default": 0.25, "min": 0.0, "max": 0.6, "step": 0.01, "tooltip": "mediapipe_sam3 only: how far the MediaPipe face region extends upward (as a fraction of face height) so SAM3 can reach the upper forehead."}),
             }
         }
 
@@ -412,11 +423,11 @@ class LIN_SkinDeShineMaskLayer:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "destination": ("IMAGE", {"tooltip": "底層／背景圖，通常接原始人像。"}),
-                "source": ("IMAGE", {"tooltip": "要插入的圖層，通常接 MaskToImage 的輸出，或接另一張背景／參考圖。"}),
-                "mask": ("MASK", {"tooltip": "控制 source 圖層出現位置的遮罩，通常接 Skin DeShine Mask 的 skin_mask。"}),
-                "mask_opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "遮罩透明度；1 代表完整使用 MASK，0 代表不顯示 source。輸出的 mask 也會套用這個透明度。"}),
-                "background_opacity": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "source 圖層的顯示透明度；只影響合成預覽，不會削弱輸出的 mask。"}),
+                "destination": ("IMAGE", {"tooltip": "Base/background image, usually the original portrait."}),
+                "source": ("IMAGE", {"tooltip": "Layer to insert, such as MaskToImage output or another reference image."}),
+                "mask": ("MASK", {"tooltip": "Where to show the source layer, usually Skin DeShine Mask's skin_mask."}),
+                "mask_opacity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Mask strength: 1 applies the full mask, 0 hides the source. Also scales the output mask."}),
+                "background_opacity": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Source-layer opacity in the composite preview only; does not weaken the output mask."}),
             },
         }
 
@@ -427,7 +438,7 @@ class LIN_SkinDeShineMaskLayer:
 
     def composite(self, destination, source, mask, mask_opacity, background_opacity):
         if destination.ndim != 4 or source.ndim != 4:
-            raise ValueError("destination 與 source 必須是 IMAGE")
+            raise ValueError("destination and source must be IMAGE")
 
         height, width = destination.shape[1:3]
         if source.shape[1:3] != (height, width):
@@ -455,12 +466,12 @@ class LIN_SkinDeShineMaskEditor:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "畫布底圖。paint_on_image：接原圖（Load Image）。edit_auto_mask：接 Skin DeShine Mask 的 preview（原圖＋綠色自動遮罩），先跑一次才會顯示。"}),
-                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "在底圖上直接畫。edit_auto_mask 模式：任何顏色＝加入，紅色筆刷＝擦掉自動遮罩。"}),
-                "edit_mode": (["paint_on_image", "edit_auto_mask"], {"default": "edit_auto_mask", "tooltip": "paint_on_image：只用你畫的範圍當遮罩。edit_auto_mask：以自動遮罩為基礎，一般顏色加、紅色減。"}),
+                "image": ("IMAGE", {"tooltip": "Canvas background. paint_on_image: connect the original image. edit_auto_mask: connect the preview output of Skin DeShine Mask (run once to show it)."}),
+                "mask": ("STRING", {"default": "", "multiline": False, "widgetType": "PAINTER", "image_upload": True, "tooltip": "Paint on the background. In edit_auto_mask, any colour adds and a red brush erases the automatic mask."}),
+                "edit_mode": (["paint_on_image", "edit_auto_mask"], {"default": "edit_auto_mask", "tooltip": "paint_on_image: use only the painted area. edit_auto_mask: start from the automatic mask; normal colours add, red removes."}),
             },
             "optional": {
-                "auto_mask": ("MASK", {"tooltip": "edit_auto_mask 用：接 Skin DeShine Mask 的 skin_mask。"}),
+                "auto_mask": ("MASK", {"tooltip": "For edit_auto_mask: connect the skin_mask output of Skin DeShine Mask."}),
             },
         }
 
@@ -473,7 +484,7 @@ class LIN_SkinDeShineMaskEditor:
         import os
 
         if image.ndim != 4:
-            raise ValueError("image 必須是 IMAGE")
+            raise ValueError("image must be IMAGE")
         base_image = image[:1].float()
         height, width = base_image.shape[1:3]
 
@@ -485,7 +496,7 @@ class LIN_SkinDeShineMaskEditor:
 
             mask_path = folder_paths.get_annotated_filepath(mask)
             if not os.path.isfile(mask_path):
-                raise ValueError(f"找不到 Painter MASK 檔案：{mask}")
+                raise ValueError(f"Painter mask file not found: {mask}")
             painter_img = node_helpers.pillow(Image.open, mask_path).convert("RGBA")
             if painter_img.size != (width, height):
                 painter_img = painter_img.resize((width, height), Image.LANCZOS)

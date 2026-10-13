@@ -31,15 +31,20 @@ def main():
 
     assert [item["name"] for item in deoil["inputs"]] == ["image", "skin_mask", "manual_mask"]
     assert [item["name"] for item in deoil["outputs"]] == ["image", "shine_mask", "mask_preview"]
-    assert deoil["widgets_values_named"]["strength"] == 1
-    assert deoil["widgets_values_named"]["core_repair"] == 0.95
-    assert deoil["widgets_values_named"]["color_repair"] == 1
+    assert deoil["widgets_values_named"]["strength"] == 0.5
+    assert deoil["widgets_values_named"]["core_repair"] == 0.78
+    assert deoil["widgets_values_named"]["color_repair"] == 0.42
+    assert deoil["widgets_values_named"]["version"] == "v2"
 
     face_inputs = [item["name"] for item in face_mask["inputs"]]
-    assert face_inputs == ["image", "manual_mask"]
+    assert face_inputs == ["image", "manual_mask", "sam3_mask"]
     assert "analysis_models" not in face_inputs
     assert [item["name"] for item in face_mask["outputs"]] == ["skin_mask", "preview"]
-    assert face_mask["widgets_values_named"]["algorithm"] == "mediapipe"
+    assert face_mask["widgets_values_named"]["algorithm"] == "mediapipe_sam3"
+    assert face_mask["widgets_values_named"]["edge_blur"] == 8
+
+    editor = by_type["LIN_SkinDeShineMaskEditor"][0]
+    assert editor["widgets_values_named"]["edit_mode"] == "edit_auto_mask"
 
     for node_type in (
         "MaskPreview",
@@ -53,7 +58,6 @@ def main():
     expected_links = [
         [1, 1, 0, 2, 0, "IMAGE"],
         [3, 1, 0, 4, 0, "IMAGE"],
-        [4, 4, 0, 2, 1, "MASK"],
         [5, 2, 0, 5, 0, "IMAGE"],
         [6, 1, 0, 5, 1, "IMAGE"],
         [7, 4, 0, 6, 0, "MASK"],
@@ -64,6 +68,9 @@ def main():
         [23, 6, 0, 15, 0, "MASK"],
         [24, 15, 0, 14, 1, "IMAGE"],
         [25, 14, 0, 16, 0, "IMAGE"],
+        [27, 4, 1, 19, 0, "IMAGE"],
+        [28, 4, 0, 19, 1, "MASK"],
+        [29, 19, 1, 2, 1, "MASK"],
     ]
     assert data["links"] == expected_links
 

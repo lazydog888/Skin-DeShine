@@ -132,22 +132,22 @@ class LIN_DeOilSkin:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "要去油光的人像原圖；遮罩會套用在這張圖上。"}),
-                "skin_mask": ("MASK", {"tooltip": "皮膚處理範圍；建議接 Skin DeShine Mask 的 skin_mask 輸出。"}),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01, "tooltip": "整體去油光強度；0 為不處理，1 為平衡效果，較高數值會更明顯。"}),
-                "core_repair": ("FLOAT", {"default": 0.78, "min": 0.0, "max": 0.95, "step": 0.01, "tooltip": "白色高光核心的低頻重建量；降低可保留更多立體高光。"}),
-                "color_repair": ("FLOAT", {"default": 0.42, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "高光區域的膚色補回量；降低可避免膚色被補得太重。"}),
-                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "手動 MASK 的合併方式：add 加入、subtract 排除、intersect 取交集、replace 完全取代自動遮罩。"}),
-                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對處理遮罩向外擴張的像素數；0 代表不調整。"}),
-                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "對處理遮罩向內收縮的像素數；0 代表不調整。"}),
-                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "對處理遮罩再次羽化的半徑；0 代表保留原有邊緣。"}),
-                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "將處理遮罩二值化的門檻；0 代表不二值化，適合保留柔邊。"}),
-                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "手動 MASK 的影響強度；1 為完整套用，0 為不套用。"}),
-                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "預覽疊圖中遮罩顏色的透明度；不會改變去油光結果。"}),
-                "version": (["v2", "v1"], {"default": "v2", "tooltip": "v2：補回膚色不發灰、邊緣羽化、壓毛孔反光。v1：舊算法，留作對照。"}),
+                "image": ("IMAGE", {"tooltip": "Portrait image to de-shine. The skin mask is applied to this image."}),
+                "skin_mask": ("MASK", {"tooltip": "Skin area to process. Connect the skin_mask output of Skin DeShine Mask."}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 2.0, "step": 0.01, "tooltip": "Overall shine-suppression strength: 0 disables luminance reduction (highlight-core repair remains separately controlled), 1 is balanced, and higher values suppress more shine."}),
+                "core_repair": ("FLOAT", {"default": 0.78, "min": 0.0, "max": 0.95, "step": 0.01, "tooltip": "Low-frequency reconstruction of bright, nearly white highlight cores; reduce to keep more original highlights."}),
+                "color_repair": ("FLOAT", {"default": 0.42, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Restores skin color in highlight cores; reduce to avoid excessive color replacement."}),
+                "manual_mode": (["add", "subtract", "intersect", "replace"], {"default": "add", "tooltip": "How to combine a manual mask: add, subtract, intersect, or replace."}),
+                "manual_expand": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Expand the processing mask outward by this many pixels; 0 leaves it unchanged."}),
+                "manual_shrink": ("INT", {"default": 0, "min": 0, "max": 128, "step": 1, "tooltip": "Contract the processing mask inward by this many pixels; 0 leaves it unchanged."}),
+                "manual_blur": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 32.0, "step": 0.5, "tooltip": "Additional mask-edge feathering radius; 0 keeps the current edge."}),
+                "manual_threshold": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Binarization threshold for hard-edged masks; 0 preserves soft edges."}),
+                "manual_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Strength of the manual-mask contribution: 1 fully applies it, 0 ignores it."}),
+                "preview_opacity": ("FLOAT", {"default": 0.35, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Green mask overlay opacity in the preview only; does not change processing."}),
+                "version": (["v2", "v1"], {"default": "v2", "tooltip": "v2: restores skin colour (no grey patches), feathered edges, trims pore glints. v1: original algorithm, kept for comparison."}),
             },
             "optional": {
-                "manual_mask": ("MASK", {"tooltip": "可接外部手工繪製或修正過的 MASK，搭配 manual_mode 與 manual_strength 使用。"}),
+                "manual_mask": ("MASK", {"tooltip": "Optional externally painted or corrected mask, used with manual_mode and manual_strength."}),
             },
         }
 
